@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Carte OpenStreetMap - Exo2</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+          crossorigin=""/>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f5f5f5;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 2em;
+        }
+        .header p {
+            margin: 5px 0 0 0;
+            opacity: 0.9;
+        }
+        .controls {
+            background: white;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: center;
+        }
+        .btn {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: all 0.3s ease;
+        }
+        .btn:hover {
+            background: #0056b3;
+            transform: translateY(-2px);
+        }
+        .btn:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .status {
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 14px;
+        }
+        .status-success {
+            background: #d4edda;
+            color: #155724;
+        }
+        .status-error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .status-loading {
+            background: #fff3cd;
+            color: #856404;
+        }
+        #map {
+            height: calc(100vh - 160px);
+            width: 100%;
+            border: none;
+        }
+        .info-panel {
+            position: fixed;
+            top: 180px;
+            right: 20px;
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+            max-width: 300px;
+            z-index: 1000;
+            display: none;
+        }
+        .info-panel h3 {
+            margin: 0 0 15px 0;
+            color: #333;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 10px;
+        }
+        .info-item {
+            margin: 10px 0;
+            display: flex;
+            justify-content: space-between;
+        }
+        .info-label {
+            font-weight: bold;
+            color: #495057;
+        }
+        .info-value {
+            color: #28a745;
+            font-family: monospace;
+        }
+        .back-link {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: white;
+            color: #007bff;
+            text-decoration: none;
+            padding: 10px 20px;
+            border-radius: 25px;
+            font-weight: bold;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            z-index: 1001;
+            transition: all 0.3s ease;
+        }
+        .back-link:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }
+        @media (max-width: 768px) {
+            .controls {
+                flex-direction: column;
+                gap: 10px;
+            }
+            .info-panel {
+                position: static;
+                margin: 20px;
+                max-width: none;
+            }
+            #map {
+                height: 400px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <a href="../carto.html" class="back-link">← Retour</a>
+
+    <div class="header">
+        <h1>Carte Interactive</h1>
+    </div>
+
+    <div class="controls">
+        <button id="locateBtn" class="btn" onclick="locateUser()">
+            Me localiser
+        </button>
+        <button id="centerBtn" class="btn" onclick="centerOnUser()" disabled>
+            Centrer sur moi
+        </button>
+        <div id="status" class="status status-loading" style="display: none;">
+            Localisation en cours...
+        </div>
+    </div>
+
+    <div id="map"></div>
+
+    <div id="infoPanel" class="info-panel">
+        <h3>Informations de position</h3>
+        <div class="info-item">
+            <span class="info-label">Latitude :</span>
+            <span class="info-value" id="infoLat">-</span>
+        </div>
+        <div class="info-item">
+            <span class="info-label">Longitude :</span>
+            <span class="info-value" id="infoLng">-</span>
+        </div>
+        <div class="info-item">
+            <span class="info-label">Précision :</span>
+            <span class="info-value" id="infoAcc">-</span>
+        </div>
+        <div class="info-item">
+            <span class="info-label">Altitude :</span>
+            <span class="info-value" id="infoAlt">-</span>
+        </div>
+        <div class="info-item">
+            <span class="info-label">Vitesse :</span>
+            <span class="info-value" id="infoSpeed">-</span>
+        </div>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+            crossorigin=""></script>
+    <script>
+        let map;
+        let userMarker;
+        let accuracyCircle;
+        let userPosition = null;
+
+        // Initialiser la carte
+        function initMap() {
+            // Carte centrée sur Nice par défaut
+            const niceCoords = [43.7102, 7.2620];
+            map = L.map('map').setView(niceCoords, 13);
+
+            // Ajouter les tuiles OpenStreetMap
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                maxZoom: 19
+            }).addTo(map);
+
+            // Ajouter contrôles de zoom
+            map.zoomControl.setPosition('bottomright');
+
+            // Ajouter marqueur par défaut sur Nice centre-ville
+            const niceIcon = L.divIcon({
+                className: 'nice-marker',
+                html: `
+                    <div style="
+                        width: 16px;
+                        height: 16px;
+                        background: #dc3545;
+                        border: 2px solid white;
+                        border-radius: 50%;
+                        box-shadow: 0 2px 8px rgba(220,53,69,0.5);
+                    "></div>
+                `,
+                iconSize: [16, 16],
+                iconAnchor: [8, 8]
+            });
+
+            L.marker(niceCoords, { icon: niceIcon })
+                .addTo(map)
+                .bindPopup(`
+                    <div style="text-align: center;">
+                        <h4>Nice Centre-ville</h4>
+                        <p>Cliquez sur "Me localiser" pour votre position réelle</p>
+                    </div>
+                `);
+
+            // Ajouter le triangle des Bermudes
+            addBermudaTriangle();
+
+            // Événement de clic sur la carte
+            map.on('click', function(e) {
+                console.log('Position cliquée:', e.latlng.lat, e.latlng.lng);
+            });
+        }
+
+        function addBermudaTriangle() {
+            // Coordonnées du triangle des Bermudes
+            const bermudaTriangle = [
+                [25.7743, -80.1937], // Miami, Floride
+                [32.3078, -64.7505], // Bermudes
+                [18.4655, -66.1057]  // San Juan, Porto Rico
+            ];
+
+            // Tracer le triangle en rouge
+            const triangle = L.polygon(bermudaTriangle, {
+                color: '#dc3545',
+                weight: 3,
+                opacity: 0.8,
+                fillColor: '#dc3545',
+                fillOpacity: 0.1
+            }).addTo(map);
+
+            // Ajouter popup au triangle
+            triangle.bindPopup(`
+                <div style="text-align: center;">
+                    <h4>🔺 Triangle des Bermudes</h4>
+                    <p><strong>Zone mystérieuse de l'Atlantique</strong></p>
+                    <p>Miami - Bermudes - Porto Rico</p>
+                    <p>Superficie: ~1,3 million km²</p>
+                </div>
+            `);
+
+            // Ajouter des marqueurs aux sommets
+            const triangleIcon = L.divIcon({
+                className: 'triangle-marker',
+                html: `
+                    <div style="
+                        width: 12px;
+                        height: 12px;
+                        background: #dc3545;
+                        border: 2px solid white;
+                        border-radius: 50%;
+                        box-shadow: 0 1px 5px rgba(220,53,69,0.7);
+                    "></div>
+                `,
+                iconSize: [12, 12],
+                iconAnchor: [6, 6]
+            });
+
+            // Marqueurs des sommets
+            L.marker([25.7743, -80.1937], { icon: triangleIcon })
+                .addTo(map)
+                .bindPopup('<div style="text-align: center;"><h5>Miami</h5><p>Floride, USA</p></div>');
+
+            L.marker([32.3078, -64.7505], { icon: triangleIcon })
+                .addTo(map)
+                .bindPopup('<div style="text-align: center;"><h5>Bermudes</h5><p>Territoire britannique</p></div>');
+
+            L.marker([18.4655, -66.1057], { icon: triangleIcon })
+                .addTo(map)
+                .bindPopup('<div style="text-align: center;"><h5>San Juan</h5><p>Porto Rico</p></div>');
+        }
+
+        function locateUser() {
+            console.log('Fonction locateUser() appelée');
+
+            const locateBtn = document.getElementById('locateBtn');
+            const centerBtn = document.getElementById('centerBtn');
+            const status = document.getElementById('status');
+
+            // Vérifier que les éléments existent
+            if (!locateBtn || !centerBtn || !status) {
+                console.error('Éléments DOM manquants');
+                alert('Erreur: Éléments de l\'interface manquants');
+                return;
+            }
+
+            // Réinitialiser l'interface
+            locateBtn.disabled = true;
+            locateBtn.textContent = 'Localisation...';
+            centerBtn.disabled = true;
+            status.style.display = 'block';
+            status.className = 'status status-loading';
+            status.textContent = 'Recherche de votre position...';
+
+            // Vérifier le support de la géolocalisation
+            if (!navigator.geolocation) {
+                console.error('Géolocalisation non supportée');
+                showError('La géolocalisation n\'est pas supportée par ce navigateur.');
+                resetButtons();
+                return;
+            }
+
+            console.log('Géolocalisation supportée, démarrage...');
+
+            const options = {
+                enableHighAccuracy: true,
+                timeout: 20000,
+                maximumAge: 60000
+            };
+
+            navigator.geolocation.getCurrentPosition(
+                function(position) {
+                    console.log('Position obtenue:', position);
+                    userPosition = position;
+                    displayUserOnMap(position);
+                    showSuccess('Position trouvée !');
+
+                    locateBtn.disabled = false;
+                    locateBtn.textContent = 'Actualiser position';
+                    centerBtn.disabled = false;
+                },
+                function(error) {
+                    console.error('Erreur géolocalisation:', error);
+                    handleError(error);
+                    resetButtons();
+                },
+                options
+            );
+        }
+
+        function resetButtons() {
+            const locateBtn = document.getElementById('locateBtn');
+            const centerBtn = document.getElementById('centerBtn');
+
+            if (locateBtn) {
+                locateBtn.disabled = false;
+                locateBtn.textContent = 'Me localiser';
+            }
+            if (centerBtn) {
+                centerBtn.disabled = true;
+            }
+        }
+
+        function displayUserOnMap(position) {
+            const lat = position.coords.latitude;
+            const lng = position.coords.longitude;
+            const accuracy = position.coords.accuracy;
+
+            // Supprimer l'ancien marqueur et cercle s'ils existent
+            if (userMarker) {
+                map.removeLayer(userMarker);
+            }
+            if (accuracyCircle) {
+                map.removeLayer(accuracyCircle);
+            }
+
+            // Créer l'icône personnalisée pour l'utilisateur
+            const userIcon = L.divIcon({
+                className: 'user-marker',
+                html: `
+                    <div style="
+                        width: 20px;
+                        height: 20px;
+                        background: #007bff;
+                        border: 3px solid white;
+                        border-radius: 50%;
+                        box-shadow: 0 2px 10px rgba(0,123,255,0.5);
+                        animation: pulse 2s infinite;
+                    "></div>
+                    <style>
+                        @keyframes pulse {
+                            0% { transform: scale(1); }
+                            50% { transform: scale(1.2); }
+                            100% { transform: scale(1); }
+                        }
+                    </style>
+                `,
+                iconSize: [20, 20],
+                iconAnchor: [10, 10]
+            });
+
+            // Ajouter le marqueur
+            userMarker = L.marker([lat, lng], { icon: userIcon })
+                .addTo(map)
+                .bindPopup(`
+                    <div style="text-align: center;">
+                        <h4>Votre position</h4>
+                        <p><strong>Lat:</strong> ${lat.toFixed(6)}</p>
+                        <p><strong>Lng:</strong> ${lng.toFixed(6)}</p>
+                        <p><strong>Précision:</strong> ±${accuracy.toFixed(0)}m</p>
+                    </div>
+                `)
+                .openPopup();
+
+            // Ajouter le cercle de précision
+            accuracyCircle = L.circle([lat, lng], {
+                radius: accuracy,
+                color: '#007bff',
+                fillColor: '#007bff',
+                fillOpacity: 0.1,
+                weight: 2
+            }).addTo(map);
+
+            // Centrer la carte sur l'utilisateur
+            map.setView([lat, lng], 16);
+
+            // Mettre à jour le panneau d'informations
+            updateInfoPanel(position);
+        }
+
+        function centerOnUser() {
+            if (userPosition && userMarker) {
+                map.setView([userPosition.coords.latitude, userPosition.coords.longitude], 16);
+                userMarker.openPopup();
+            }
+        }
+
+        function updateInfoPanel(position) {
+            const coords = position.coords;
+
+            document.getElementById('infoLat').textContent = coords.latitude.toFixed(6) + '°';
+            document.getElementById('infoLng').textContent = coords.longitude.toFixed(6) + '°';
+            document.getElementById('infoAcc').textContent = '±' + coords.accuracy.toFixed(0) + 'm';
+            document.getElementById('infoAlt').textContent =
+                coords.altitude !== null ? coords.altitude.toFixed(0) + 'm' : 'Non disponible';
+            document.getElementById('infoSpeed').textContent =
+                coords.speed !== null ? coords.speed.toFixed(1) + 'm/s' : '0.0 m/s';
+
+            document.getElementById('infoPanel').style.display = 'block';
+        }
+
+        function showSuccess(message) {
+            const status = document.getElementById('status');
+            status.className = 'status status-success';
+            status.textContent = message;
+
+            setTimeout(() => {
+                status.style.display = 'none';
+            }, 3000);
+        }
+
+        function showError(message) {
+            const status = document.getElementById('status');
+            status.className = 'status status-error';
+            status.textContent = message;
+        }
+
+        function handleError(error) {
+            let errorMessage = '';
+            switch(error.code) {
+                case error.PERMISSION_DENIED:
+                    errorMessage = "Accès à la géolocalisation refusé.";
+                    break;
+                case error.POSITION_UNAVAILABLE:
+                    errorMessage = "Position indisponible.";
+                    break;
+                case error.TIMEOUT:
+                    errorMessage = "Délai d'attente dépassé.";
+                    break;
+                default:
+                    errorMessage = "Erreur de géolocalisation.";
+                    break;
+            }
+            showError(errorMessage);
+        }
+
+        // Initialiser la carte au chargement de la page
+        $(document).ready(function() {
+            console.log('jQuery ready, initialisation...');
+            initMap();
+
+            // Tester la géolocalisation
+            if (navigator.geolocation) {
+                console.log('Géolocalisation supportée');
+            } else {
+                console.log('Géolocalisation non supportée');
+                $('#status').show().removeClass().addClass('status status-error').text('Géolocalisation non supportée par votre navigateur');
+            }
+        });
+    </script>
+</body>
+</html>
