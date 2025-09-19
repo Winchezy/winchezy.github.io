@@ -213,6 +213,7 @@
         let watchInterval = null;
         let lastPosition = null;
         let baseTimestamp = null;
+        let previousPosition = null;
 
         const options = {
             enableHighAccuracy: true,
@@ -276,6 +277,7 @@
             updateCount = 0;
             lastPosition = null;
             baseTimestamp = null;
+            previousPosition = null;
             error.style.display = 'none';
             loading.style.display = 'block';
             startBtn.style.display = 'none';
@@ -292,6 +294,7 @@
             // Utilisation de watchPosition() (une seule demande d'autorisation)
             watchId = navigator.geolocation.watchPosition(
                 function(position) {
+                    previousPosition = lastPosition;
                     lastPosition = position;
                     if (!baseTimestamp) {
                         baseTimestamp = Date.now();
@@ -356,6 +359,27 @@
             document.getElementById('getCurrentData').style.display = 'block';
         }
 
+        function calculateSpeed(pos1, pos2) {
+            if (!pos1 || !pos2) return null;
+
+            // Calcul de la distance en utilisant la formule de Haversine
+            const R = 6371e3; // Rayon de la Terre en mètres
+            const φ1 = pos1.coords.latitude * Math.PI/180;
+            const φ2 = pos2.coords.latitude * Math.PI/180;
+            const Δφ = (pos2.coords.latitude - pos1.coords.latitude) * Math.PI/180;
+            const Δλ = (pos2.coords.longitude - pos1.coords.longitude) * Math.PI/180;
+
+            const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+                      Math.cos(φ1) * Math.cos(φ2) *
+                      Math.sin(Δλ/2) * Math.sin(Δλ/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+
+            const distance = R * c; // Distance en mètres
+            const time = (pos2.timestamp - pos1.timestamp) / 1000; // Temps en secondes
+
+            return time > 0 ? distance / time : 0; // Vitesse en m/s
+        }
+
         function displayWatchPosition(position) {
             const coords = position.coords;
             const originalTimestamp = new Date(position.timestamp);
@@ -367,13 +391,19 @@
             // Créer une nouvelle heure basée sur le timestamp GPS + temps écoulé
             const updatedTime = new Date(originalTimestamp.getTime() + elapsedTime);
 
+            // Calculer la vitesse si on a une position précédente
+            let speed = coords.speed;
+            if (speed === null && previousPosition) {
+                speed = calculateSpeed(previousPosition, position);
+            }
+
             document.getElementById('watchLon').textContent = coords.longitude.toFixed(6);
             document.getElementById('watchLat').textContent = coords.latitude.toFixed(6);
             document.getElementById('watchAlt').textContent =
                 coords.altitude !== null ? coords.altitude.toFixed(2) : 'Non disponible';
             document.getElementById('watchAcc').textContent = coords.accuracy.toFixed(2);
             document.getElementById('watchSpeed').textContent =
-                coords.speed !== null ? coords.speed.toFixed(2) : 'Non disponible';
+                speed !== null ? speed.toFixed(2) : 'Non disponible';
             document.getElementById('watchTime').textContent =
                 updatedTime.toLocaleDateString('fr-FR') + ' à ' + updatedTime.toLocaleTimeString('fr-FR');
 
