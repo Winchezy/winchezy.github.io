@@ -112,6 +112,23 @@
             background: #f8d7da;
             color: #721c24;
         }
+        .back-link {
+            display: inline-block;
+            margin-bottom: 20px;
+            color: #007bff;
+            text-decoration: none;
+            font-weight: bold;
+            padding: 8px 16px;
+            border-radius: 5px;
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            transition: all 0.3s ease;
+        }
+        .back-link:hover {
+            background: #007bff;
+            color: white;
+            transform: translateY(-1px);
+        }
         @media (max-width: 768px) {
             .methods-container {
                 grid-template-columns: 1fr;
@@ -121,6 +138,7 @@
 </head>
 <body>
     <div class="container">
+        <a href="../carto.html" class="back-link">← Retour</a>
         <h1>Géolocalisation</h1>
 
         <div class="methods-container">
