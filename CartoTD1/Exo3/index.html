@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Exercice 3 - Leaflet Plus</title>
+
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background: #f5f5f5;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .back-link {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            text-decoration: none;
+            padding: 8px 16px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 20px;
+            transition: background 0.3s;
+        }
+
+        .back-link:hover {
+            background: rgba(255,255,255,0.3);
+        }
+
+        .controls {
+            padding: 20px;
+            background: white;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .control-group label {
+            font-weight: bold;
+            color: #333;
+        }
+
+        button {
+            padding: 10px 20px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        button:hover {
+            background: #0056b3;
+        }
+
+        button:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+
+        select {
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+
+        #map {
+            height: 500px;
+            width: 100%;
+        }
+
+        .info-panel {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            max-width: 300px;
+            z-index: 1000;
+        }
+
+        .info-panel h4 {
+            margin: 0 0 10px 0;
+            color: #333;
+        }
+
+        .info-item {
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+
+        .distance-display {
+            background: #e3f2fd;
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 10px;
+            border-left: 4px solid #2196f3;
+        }
+
+        .error {
+            color: #dc3545;
+            background: #f8d7da;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <a href="../carto.html" class="back-link">← Retour</a>
+        <h1>Exercice 3 - Leaflet Plus</h1>
+    </div>
+
+    <div class="controls">
+        <div class="control-group">
+            <label for="tileSelect">Type de carte :</label>
+            <select id="tileSelect">
+                <option value="opentopomap" selected>OpenTopoMap (Terrain)</option>
+                <option value="osm">OpenStreetMap</option>
+                <option value="cartodb">CartoDB Clair</option>
+                <option value="cartodb-dark">CartoDB Sombre</option>
+                <option value="wikimedia">Wikimedia</option>
+                <option value="cyclemap">Cycle Map</option>
+            </select>
+        </div>
+
+        <button id="locateBtn">Me localiser</button>
+        <button id="showDistanceBtn" disabled title="Localisez-vous d'abord">Distance Marseille ↔ Nice</button>
+    </div>
+
+    <div style="position: relative;">
+        <div id="map"></div>
+
+        <div class="info-panel" id="infoPanel" style="display: none;">
+            <h4>Informations de position</h4>
+            <div id="positionInfo"></div>
+        </div>
+
+        <div class="info-panel" id="distancePanel" style="display: none; top: 260px;">
+            <h4>Distance Marseille ↔ Nice <button onclick="document.getElementById('distancePanel').style.display='none'" style="float: right; background: none; border: none; font-size: 16px; cursor: pointer;">×</button></h4>
+            <div id="distanceInfo"></div>
+        </div>
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <script>
+        // Variables globales
+        let map;
+        let userMarker;
+        let accuracyCircle;
+        let marseilleMaker;
+        let distanceLine;
+        let currentPosition = null;
+
+        // Coordonnées de Marseille et Nice
+        const MARSEILLE = [43.2965, 5.3698];
+        const NICE_CENTER = [43.7102, 7.2620];
+
+        // Configuration des tuiles
+        const tileConfigs = {
+            'opentopomap': {
+                url: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
+                attribution: 'Map data: © OpenStreetMap contributors, SRTM | Map style: © OpenTopoMap (CC-BY-SA)',
+                subdomains: 'abc'
+            },
+            osm: {
+                url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                attribution: '© OpenStreetMap contributors',
+                subdomains: 'abc'
+            },
+            cartodb: {
+                url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
+                attribution: '© OpenStreetMap contributors © CARTO',
+                subdomains: 'abcd'
+            },
+            'cartodb-dark': {
+                url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+                attribution: '© OpenStreetMap contributors © CARTO',
+                subdomains: 'abcd'
+            },
+            'wikimedia': {
+                url: 'https://maps.wikimedia.org/osm-intl/{z}/{x}/{y}.png',
+                attribution: '© OpenStreetMap contributors, © Wikimedia Foundation'
+            },
+            'cyclemap': {
+                url: 'https://{s}.tile.thunderforest.com/cycle/{z}/{x}/{y}.png?apikey=6170aad10dfd42a38d4d8c709a536f38',
+                attribution: '© OpenStreetMap contributors © Thunderforest',
+                subdomains: 'abc'
+            }
+        };
+
+        // Initialisation de la carte
+        function initMap() {
+            map = L.map('map').setView(NICE_CENTER, 13);
+
+            // Tuile par défaut
+            changeTileLayer('opentopomap');
+
+            // Marqueur pour Marseille
+            marseilleMaker = L.marker(MARSEILLE)
+                .bindPopup('<b>Marseille</b>')
+                .addTo(map);
+        }
+
+        // Changer le type de tuiles
+        function changeTileLayer(type) {
+            if (map.currentTileLayer) {
+                map.removeLayer(map.currentTileLayer);
+            }
+
+            const config = tileConfigs[type];
+            const options = {
+                attribution: config.attribution,
+                maxZoom: 18
+            };
+
+            // Ajouter les subdomains si définis
+            if (config.subdomains) {
+                options.subdomains = config.subdomains;
+            }
+
+            map.currentTileLayer = L.tileLayer(config.url, options).addTo(map);
+        }
+
+        // Géolocalisation
+        function getUserLocation() {
+            const locateBtn = document.getElementById('locateBtn');
+            locateBtn.disabled = true;
+            locateBtn.textContent = 'Localisation...';
+
+            if (!navigator.geolocation) {
+                showError('Géolocalisation non supportée par ce navigateur.');
+                locateBtn.disabled = false;
+                locateBtn.textContent = 'Me localiser';
+                return;
+            }
+
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    currentPosition = position;
+                    showUserPosition(position);
+                    showPositionInfo(position);
+
+                    // Activer le bouton de distance
+                    const distanceBtn = document.getElementById('showDistanceBtn');
+                    distanceBtn.disabled = false;
+                    distanceBtn.title = 'Calculer la distance vers Marseille';
+
+                    locateBtn.disabled = false;
+                    locateBtn.textContent = 'Me localiser';
+                },
+                (error) => {
+                    showError('Erreur de géolocalisation: ' + error.message);
+                    locateBtn.disabled = false;
+                    locateBtn.textContent = 'Me localiser';
+                },
+                {
+                    enableHighAccuracy: true,
+                    timeout: 10000,
+                    maximumAge: 60000
+                }
+            );
+        }
+
+        // Afficher la position utilisateur
+        function showUserPosition(position) {
+            const lat = position.coords.latitude;
+            const lng = position.coords.longitude;
+            const accuracy = position.coords.accuracy;
+
+            // Supprimer les marqueurs précédents
+            if (userMarker) map.removeLayer(userMarker);
+            if (accuracyCircle) map.removeLayer(accuracyCircle);
+
+            // Nouveau marqueur utilisateur
+            userMarker = L.marker([lat, lng])
+                .bindPopup('<b>Votre position</b><br>Précision: ' + Math.round(accuracy) + 'm')
+                .addTo(map);
+
+            // Cercle de précision
+            accuracyCircle = L.circle([lat, lng], {
+                radius: accuracy,
+                color: '#2196f3',
+                fillColor: '#2196f3',
+                fillOpacity: 0.2,
+                weight: 2
+            }).addTo(map);
+
+            // Centrer la carte
+            map.setView([lat, lng], 15);
+        }
+
+        // Afficher les informations de position
+        function showPositionInfo(position) {
+            const coords = position.coords;
+            const timestamp = new Date(position.timestamp);
+
+            const infoPanel = document.getElementById('infoPanel');
+            const positionInfo = document.getElementById('positionInfo');
+
+            positionInfo.innerHTML = `
+                <div class="info-item"><strong>Latitude:</strong> ${coords.latitude.toFixed(6)}</div>
+                <div class="info-item"><strong>Longitude:</strong> ${coords.longitude.toFixed(6)}</div>
+                <div class="info-item"><strong>Précision:</strong> ${Math.round(coords.accuracy)} m</div>
+                <div class="info-item"><strong>Altitude:</strong> ${coords.altitude ? Math.round(coords.altitude) + ' m' : 'Non disponible'}</div>
+                <div class="info-item"><strong>Vitesse:</strong> ${coords.speed ? Math.round(coords.speed * 3.6) + ' km/h' : 'Non disponible'}</div>
+                <div class="info-item"><strong>Horodatage:</strong> ${timestamp.toLocaleString()}</div>
+            `;
+
+            infoPanel.style.display = 'block';
+        }
+
+        // Calculer la distance entre deux points (formule de Haversine)
+        function calculateDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371; // Rayon de la Terre en km
+            const dLat = toRadians(lat2 - lat1);
+            const dLon = toRadians(lon2 - lon1);
+
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                    Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) *
+                    Math.sin(dLon/2) * Math.sin(dLon/2);
+
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            return R * c;
+        }
+
+        function toRadians(degrees) {
+            return degrees * (Math.PI/180);
+        }
+
+        // Afficher la distance avec Marseille
+        function showDistanceToMarseille() {
+            if (!currentPosition) {
+                showError('Veuillez d\'abord vous localiser.');
+                return;
+            }
+
+            const userLat = currentPosition.coords.latitude;
+            const userLng = currentPosition.coords.longitude;
+
+            console.log('Position utilisateur:', userLat, userLng);
+            console.log('Position Marseille:', MARSEILLE);
+
+            // Calculer la distance
+            const distance = calculateDistance(userLat, userLng, MARSEILLE[0], MARSEILLE[1]);
+            console.log('Distance calculée:', distance);
+
+            // Supprimer la ligne précédente
+            if (distanceLine) map.removeLayer(distanceLine);
+
+            // Tracer une ligne entre les deux points
+            distanceLine = L.polyline([
+                [userLat, userLng],
+                MARSEILLE
+            ], {
+                color: '#e91e63',
+                weight: 3,
+                opacity: 0.8,
+                dashArray: '10, 10'
+            }).addTo(map);
+
+            // Afficher le panneau de distance séparé
+            const distancePanel = document.getElementById('distancePanel');
+            distancePanel.style.display = 'block';
+
+            // Afficher la distance
+            const distanceInfo = document.getElementById('distanceInfo');
+            distanceInfo.innerHTML = `
+                <div class="distance-display">
+                    <strong>Distance vers Marseille:</strong><br>
+                    ${distance.toFixed(2)} km<br>
+                    <small>Coordonnées Marseille: ${MARSEILLE[0].toFixed(4)}, ${MARSEILLE[1].toFixed(4)}</small>
+                </div>
+            `;
+
+            // Popup sur la ligne
+            distanceLine.bindPopup(`
+                <b>Distance vers Marseille</b><br>
+                ${distance.toFixed(2)} km<br>
+                <small>Ligne droite (à vol d'oiseau)</small>
+            `);
+
+            // Ajuster la vue pour montrer les deux points
+            const bounds = L.latLngBounds([
+                [userLat, userLng],
+                MARSEILLE
+            ]);
+            map.fitBounds(bounds, { padding: [20, 20] });
+        }
+
+
+        // Afficher une erreur
+        function showError(message) {
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'error';
+            errorDiv.textContent = message;
+
+            document.querySelector('.controls').appendChild(errorDiv);
+
+            setTimeout(() => {
+                if (errorDiv.parentNode) {
+                    errorDiv.parentNode.removeChild(errorDiv);
+                }
+            }, 5000);
+        }
+
+        // Event listeners
+        document.addEventListener('DOMContentLoaded', function() {
+            initMap();
+
+            document.getElementById('tileSelect').addEventListener('change', function(e) {
+                changeTileLayer(e.target.value);
+            });
+
+            document.getElementById('locateBtn').addEventListener('click', getUserLocation);
+            document.getElementById('showDistanceBtn').addEventListener('click', showDistanceToMarseille);
+        });
+    </script>
+</body>
+</html>
