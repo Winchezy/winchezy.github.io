@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Géolocalisation - Exo1</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        h2 {
+            color: #495057;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 10px;
+            margin-top: 30px;
+        }
+        .methods-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-top: 20px;
+        }
+        .method-section {
+            border: 1px solid #dee2e6;
+            border-radius: 8px;
+            padding: 20px;
+            background: #f8f9fa;
+        }
+        .data-section {
+            margin: 15px 0;
+            padding: 12px;
+            background: white;
+            border-radius: 5px;
+            border-left: 4px solid #007bff;
+        }
+        .data-label {
+            font-weight: bold;
+            color: #495057;
+            display: inline-block;
+            width: 120px;
+        }
+        .data-value {
+            color: #28a745;
+            font-family: monospace;
+            font-size: 1em;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            margin: 10px 5px;
+            width: calc(100% - 10px);
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button:disabled {
+            background: #6c757d;
+            cursor: not-allowed;
+        }
+        .stop-btn {
+            background: #dc3545;
+        }
+        .stop-btn:hover {
+            background: #c82333;
+        }
+        .error {
+            color: #dc3545;
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            font-size: 0.9em;
+        }
+        .loading {
+            text-align: center;
+            color: #6c757d;
+            font-style: italic;
+            font-size: 0.9em;
+        }
+        .status {
+            font-weight: bold;
+            padding: 5px 10px;
+            border-radius: 3px;
+            font-size: 0.8em;
+        }
+        .status-active {
+            background: #d4edda;
+            color: #155724;
+        }
+        .status-inactive {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        @media (max-width: 768px) {
+            .methods-container {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Géolocalisation</h1>
+
+        <div class="methods-container">
+            <!-- getCurrentPosition Section -->
+            <div class="method-section">
+                <h2>Position actuelle</h2>
+                <p>getCurrentPosition()</p>
+
+                <button id="getCurrentBtn" onclick="getCurrentPosition()">
+                    Obtenir position actuelle
+                </button>
+
+                <div id="getCurrentLoading" class="loading" style="display: none;">
+                    Obtention de la position...
+                </div>
+
+                <div id="getCurrentData" style="display: none;">
+                    <div class="data-section">
+                        <span class="data-label">Position :</span>
+                        <span class="data-value" id="currentLon">-</span>°,
+                        <span class="data-value" id="currentLat">-</span>°,
+                        <span class="data-value" id="currentAlt">-</span> m
+                    </div>
+                    <div class="data-section">
+                        <span class="data-label">Précision :</span>
+                        <span class="data-value" id="currentAcc">-</span> m
+                    </div>
+                    <div class="data-section">
+                        <span class="data-label">Vitesse :</span>
+                        <span class="data-value" id="currentSpeed">-</span> m/s
+                    </div>
+                    <div class="data-section">
+                        <span class="data-label">Date/Heure :</span>
+                        <span class="data-value" id="currentTime">-</span>
+                    </div>
+                </div>
+
+                <div id="getCurrentError" class="error" style="display: none;"></div>
+            </div>
+
+            <!-- watchPosition Section -->
+            <div class="method-section">
+                <h2>Surveillance de position</h2>
+                <p>watchPosition()</p>
+
+                <div style="margin-bottom: 10px;">
+                    <span class="status" id="watchStatus">Status: Inactif</span>
+                </div>
+
+                <button id="startWatchBtn" onclick="startWatchPosition()">
+                    Démarrer surveillance
+                </button>
+                <button id="stopWatchBtn" onclick="stopWatchPosition()" class="stop-btn" style="display: none;">
+                    Arrêter surveillance
+                </button>
+
+                <div id="watchLoading" class="loading" style="display: none;">
+                    Surveillance en cours...
+                </div>
+
+                <div id="watchData" style="display: none;">
+                    <div class="data-section">
+                        <span class="data-label">Position :</span>
+                        <span class="data-value" id="watchLon">-</span>°,
+                        <span class="data-value" id="watchLat">-</span>°,
+                        <span class="data-value" id="watchAlt">-</span> m
+                    </div>
+                    <div class="data-section">
+                        <span class="data-label">Précision :</span>
+                        <span class="data-value" id="watchAcc">-</span> m
+                    </div>
+                    <div class="data-section">
+                        <span class="data-label">Vitesse :</span>
+                        <span class="data-value" id="watchSpeed">-</span> m/s
+                    </div>
+                    <div class="data-section">
+                        <span class="data-label">Date/Heure :</span>
+                        <span class="data-value" id="watchTime">-</span>
+                    </div>
+                </div>
+
+                <div id="watchError" class="error" style="display: none;"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let watchId = null;
+        let updateCount = 0;
+        let watchInterval = null;
+        let lastPosition = null;
+        let baseTimestamp = null;
+
+        const options = {
+            enableHighAccuracy: true,
+            timeout: 15000,
+            maximumAge: 0
+        };
+
+        // getCurrentPosition() implementation
+        function getCurrentPosition() {
+            const btn = document.getElementById('getCurrentBtn');
+            const loading = document.getElementById('getCurrentLoading');
+            const error = document.getElementById('getCurrentError');
+            const data = document.getElementById('getCurrentData');
+
+            // Reset states
+            error.style.display = 'none';
+            data.style.display = 'none';
+            loading.style.display = 'block';
+            btn.disabled = true;
+            btn.textContent = 'Localisation en cours...';
+
+            if (!navigator.geolocation) {
+                showError('getCurrentError', "La géolocalisation n'est pas supportée par ce navigateur.");
+                return;
+            }
+
+            navigator.geolocation.getCurrentPosition(
+                function(position) {
+                    displayCurrentPosition(position);
+                    loading.style.display = 'none';
+                    btn.disabled = false;
+                    btn.textContent = 'Actualiser position';
+                },
+                function(error) {
+                    handleError('getCurrentError', error);
+                    loading.style.display = 'none';
+                    btn.disabled = false;
+                    btn.textContent = 'Réessayer';
+                },
+                options
+            );
+        }
+
+        // watchPosition() implementation
+        function startWatchPosition() {
+            const startBtn = document.getElementById('startWatchBtn');
+            const stopBtn = document.getElementById('stopWatchBtn');
+            const loading = document.getElementById('watchLoading');
+            const error = document.getElementById('watchError');
+            const status = document.getElementById('watchStatus');
+
+            // Si déjà actif, ne pas redemander
+            if (watchId !== null) {
+                return;
+            }
+
+            if (watchInterval !== null) {
+                clearInterval(watchInterval);
+            }
+
+            updateCount = 0;
+            lastPosition = null;
+            baseTimestamp = null;
+            error.style.display = 'none';
+            loading.style.display = 'block';
+            startBtn.style.display = 'none';
+            stopBtn.style.display = 'block';
+
+            status.textContent = 'Status: Actif';
+            status.className = 'status status-active';
+
+            if (!navigator.geolocation) {
+                showError('watchError', "La géolocalisation n'est pas supportée par ce navigateur.");
+                return;
+            }
+
+            // Utilisation de watchPosition() (une seule demande d'autorisation)
+            watchId = navigator.geolocation.watchPosition(
+                function(position) {
+                    lastPosition = position;
+                    if (!baseTimestamp) {
+                        baseTimestamp = Date.now();
+                    }
+                    updateCount++;
+                    displayWatchPosition(position);
+                    loading.style.display = 'none';
+                },
+                function(error) {
+                    handleError('watchError', error);
+                    loading.style.display = 'none';
+                },
+                options
+            );
+
+            // Timer pour mettre à jour l'affichage toutes les secondes
+            watchInterval = setInterval(function() {
+                if (lastPosition) {
+                    updateCount++;
+                    displayWatchPosition(lastPosition);
+                }
+            }, 1000);
+        }
+
+        function stopWatchPosition() {
+            if (watchId !== null) {
+                navigator.geolocation.clearWatch(watchId);
+                watchId = null;
+            }
+            if (watchInterval !== null) {
+                clearInterval(watchInterval);
+                watchInterval = null;
+            }
+
+            const startBtn = document.getElementById('startWatchBtn');
+            const stopBtn = document.getElementById('stopWatchBtn');
+            const loading = document.getElementById('watchLoading');
+            const status = document.getElementById('watchStatus');
+
+            loading.style.display = 'none';
+            startBtn.style.display = 'block';
+            stopBtn.style.display = 'none';
+
+            status.textContent = 'Status: Inactif';
+            status.className = 'status status-inactive';
+        }
+
+        function displayCurrentPosition(position) {
+            const coords = position.coords;
+            const timestamp = new Date(position.timestamp);
+
+            document.getElementById('currentLon').textContent = coords.longitude.toFixed(6);
+            document.getElementById('currentLat').textContent = coords.latitude.toFixed(6);
+            document.getElementById('currentAlt').textContent =
+                coords.altitude !== null ? coords.altitude.toFixed(2) : 'Non disponible';
+            document.getElementById('currentAcc').textContent = coords.accuracy.toFixed(2);
+            document.getElementById('currentSpeed').textContent =
+                coords.speed !== null ? coords.speed.toFixed(2) : 'Non disponible';
+            document.getElementById('currentTime').textContent =
+                timestamp.toLocaleDateString('fr-FR') + ' à ' + timestamp.toLocaleTimeString('fr-FR');
+
+            document.getElementById('getCurrentData').style.display = 'block';
+        }
+
+        function displayWatchPosition(position) {
+            const coords = position.coords;
+            const originalTimestamp = new Date(position.timestamp);
+
+            // Calculer le temps écoulé depuis le début du watch
+            const currentTime = Date.now();
+            const elapsedTime = currentTime - baseTimestamp;
+
+            // Créer une nouvelle heure basée sur le timestamp GPS + temps écoulé
+            const updatedTime = new Date(originalTimestamp.getTime() + elapsedTime);
+
+            document.getElementById('watchLon').textContent = coords.longitude.toFixed(6);
+            document.getElementById('watchLat').textContent = coords.latitude.toFixed(6);
+            document.getElementById('watchAlt').textContent =
+                coords.altitude !== null ? coords.altitude.toFixed(2) : 'Non disponible';
+            document.getElementById('watchAcc').textContent = coords.accuracy.toFixed(2);
+            document.getElementById('watchSpeed').textContent =
+                coords.speed !== null ? coords.speed.toFixed(2) : 'Non disponible';
+            document.getElementById('watchTime').textContent =
+                updatedTime.toLocaleDateString('fr-FR') + ' à ' + updatedTime.toLocaleTimeString('fr-FR');
+
+            document.getElementById('watchData').style.display = 'block';
+        }
+
+        function handleError(errorElementId, error) {
+            let errorMessage = '';
+            switch(error.code) {
+                case error.PERMISSION_DENIED:
+                    errorMessage = "L'accès à la géolocalisation a été refusé.";
+                    break;
+                case error.POSITION_UNAVAILABLE:
+                    errorMessage = "Les informations de localisation ne sont pas disponibles.";
+                    break;
+                case error.TIMEOUT:
+                    errorMessage = "La demande de géolocalisation a expiré.";
+                    break;
+                default:
+                    errorMessage = "Une erreur inconnue s'est produite.";
+                    break;
+            }
+            showError(errorElementId, errorMessage);
+        }
+
+        function showError(errorElementId, message) {
+            const errorDiv = document.getElementById(errorElementId);
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
+        }
+
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', function() {
+            if (watchId !== null) {
+                navigator.geolocation.clearWatch(watchId);
+            }
+            if (watchInterval !== null) {
+                clearInterval(watchInterval);
+            }
+        });
+    </script>
+</body>
+</html>
