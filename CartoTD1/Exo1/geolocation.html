@@ -352,7 +352,7 @@
                 coords.altitude !== null ? coords.altitude.toFixed(2) : 'Non disponible';
             document.getElementById('currentAcc').textContent = coords.accuracy.toFixed(2);
             document.getElementById('currentSpeed').textContent =
-                coords.speed !== null ? coords.speed.toFixed(2) : 'Non disponible';
+                coords.speed !== null ? coords.speed.toFixed(2) : '0.00';
             document.getElementById('currentTime').textContent =
                 timestamp.toLocaleDateString('fr-FR') + ' à ' + timestamp.toLocaleTimeString('fr-FR');
 
@@ -403,7 +403,7 @@
                 coords.altitude !== null ? coords.altitude.toFixed(2) : 'Non disponible';
             document.getElementById('watchAcc').textContent = coords.accuracy.toFixed(2);
             document.getElementById('watchSpeed').textContent =
-                speed !== null ? speed.toFixed(2) : 'Non disponible';
+                speed !== null ? speed.toFixed(2) : '0.00';
             document.getElementById('watchTime').textContent =
                 updatedTime.toLocaleDateString('fr-FR') + ' à ' + updatedTime.toLocaleTimeString('fr-FR');
 
