@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Babylon.js Advanced Scene - Exercise 2</title>
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #000;
+            font-family: Arial, sans-serif;
+        }
+        #renderCanvas {
+            width: 100%;
+            height: 100vh;
+            touch-action: none;
+        }
+        #info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            font-size: 14px;
+            background: rgba(0,0,0,0.7);
+            padding: 10px;
+            border-radius: 5px;
+            z-index: 100;
+        }
+        #controls {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            color: white;
+            font-size: 12px;
+            background: rgba(0,0,0,0.7);
+            padding: 10px;
+            border-radius: 5px;
+            z-index: 100;
+            min-width: 200px;
+        }
+        .control-group {
+            margin-bottom: 10px;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 3px;
+            cursor: pointer;
+            margin: 2px;
+            width: 100%;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 11px;
+        }
+        input[type="range"] {
+            width: 100%;
+        }
+        #deviceStatus {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            color: white;
+            font-size: 12px;
+            background: rgba(0,0,0,0.7);
+            padding: 10px;
+            border-radius: 5px;
+            z-index: 100;
+        }
+        #loadingStatus {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 16px;
+            background: rgba(0,0,0,0.8);
+            padding: 20px;
+            border-radius: 10px;
+            z-index: 200;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="renderCanvas"></canvas>
+
+    <div id="loadingStatus">
+        <div>Loading 3D Models...</div>
+        <div id="loadingProgress">0%</div>
+    </div>
+
+    <div id="info">
+        <strong>🚀 Babylon.js Advanced Scene</strong><br>
+        📱 Rotate phone to control objects<br>
+        🎮 Physics and interactions enabled<br>
+        🌟 Use controls for effects
+    </div>
+
+    <div id="controls">
+        <div class="control-group">
+            <button onclick="goBack()">← Retour</button>
+        </div>
+        <div class="control-group">
+            <button onclick="requestDevicePermission()">Enable Device Motion</button>
+        </div>
+        <div class="control-group">
+            <button onclick="toggleAnimation()">Toggle Animation</button>
+        </div>
+        <div class="control-group">
+            <button onclick="resetScene()">Reset Scene</button>
+        </div>
+        <div class="control-group">
+            <button onclick="togglePhysics()">Toggle Physics</button>
+        </div>
+        <div class="control-group">
+            <label>Gravity Strength:</label>
+            <input type="range" id="gravitySlider" min="0" max="20" step="1" value="9.8">
+        </div>
+        <div class="control-group">
+            <button onclick="addRandomBox()">Add Physics Box</button>
+        </div>
+        <div class="control-group">
+            <button onclick="shootBall()">Shoot Ball</button>
+        </div>
+        <div class="control-group">
+            <button onclick="switchAnimation()">Switch Animation</button>
+        </div>
+        <div class="control-group">
+            <button onclick="pauseAnimation()">Pause/Play Animation</button>
+        </div>
+    </div>
+
+    <div id="deviceStatus">
+        Device Motion: <span id="deviceMotionStatus">Disabled</span><br>
+        Alpha: <span id="alphaValue">0</span>°<br>
+        Beta: <span id="betaValue">0</span>°<br>
+        Gamma: <span id="gammaValue">0</span>°<br>
+        Physics: <span id="physicsStatus">Enabled</span><br>
+        Current Animation: <span id="currentAnimation">Loading...</span>
+    </div>
+
+    <!-- Babylon.js CDN -->
+    <script src="https://cdn.babylonjs.com/babylon.js"></script>
+    <script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
+    <script src="https://cdn.babylonjs.com/cannon.js"></script>
+
+    <script>
+        // Global variables
+        let engine, scene, camera;
+        let loadedModel, animationGroups = [];
+        let currentAnimationIndex = 0;
+        let animationEnabled = true;
+        let deviceMotionEnabled = false;
+        let physicsEnabled = true;
+        let deviceOrientation = { alpha: 0, beta: 0, gamma: 0 };
+        let physicsBoxes = [];
+
+        // Initialize Babylon.js
+        function initBabylon() {
+            try {
+                const canvas = document.getElementById("renderCanvas");
+                engine = new BABYLON.Engine(canvas, true);
+
+                // Create scene
+                scene = new BABYLON.Scene(engine);
+
+                // Try to enable physics, but continue if it fails
+                try {
+                    scene.enablePhysics(new BABYLON.Vector3(0, -9.8, 0), new BABYLON.CannonJSPlugin());
+                    physicsEnabled = true;
+                    console.log("Physics engine enabled");
+                } catch(e) {
+                    console.warn("Physics engine not available, continuing without physics:", e);
+                    physicsEnabled = false;
+                    document.getElementById('physicsStatus').textContent = 'Not Available';
+                }
+
+                // Create camera
+                camera = new BABYLON.ArcRotateCamera("camera", -Math.PI / 2, Math.PI / 2.5, 15, BABYLON.Vector3.Zero(), scene);
+
+                // Attach controls to canvas
+                scene.attachControl(canvas, true);
+                camera.setTarget(BABYLON.Vector3.Zero());
+
+                // Create lighting
+                setupLighting();
+
+                // Create environment
+                createEnvironment();
+
+                // Load 3D model (only the skull)
+                loadModel();
+
+                // Setup device motion
+                setupDeviceMotion();
+
+                // Setup controls
+                setupControls();
+
+                // Render loop
+                engine.runRenderLoop(() => {
+                    if (animationEnabled) {
+                        animateObjects();
+                    }
+                    scene.render();
+                });
+
+                // Handle window resize
+                window.addEventListener("resize", () => {
+                    engine.resize();
+                });
+
+                console.log("🚀 Babylon.js scene initialized successfully!");
+            } catch(error) {
+                console.error("Error initializing Babylon.js:", error);
+                document.getElementById('info').innerHTML = '<strong>Error:</strong> ' + error.message;
+            }
+        }
+
+        function setupLighting() {
+            // Ambient light
+            const ambientLight = new BABYLON.HemisphericLight("ambientLight", new BABYLON.Vector3(0, 1, 0), scene);
+            ambientLight.intensity = 0.6;
+
+            // Directional light with shadows
+            const directionalLight = new BABYLON.DirectionalLight("directionalLight", new BABYLON.Vector3(-1, -1, -1), scene);
+            directionalLight.position = new BABYLON.Vector3(20, 20, 20);
+            directionalLight.intensity = 1;
+
+            // Enable shadows
+            const shadowGenerator = new BABYLON.ShadowGenerator(2048, directionalLight);
+            shadowGenerator.useExponentialShadowMap = true;
+            scene.shadowGenerator = shadowGenerator;
+
+            // Point light for color
+            const pointLight = new BABYLON.PointLight("pointLight", new BABYLON.Vector3(-10, 10, 0), scene);
+            pointLight.diffuse = new BABYLON.Color3(0, 1, 1);
+            pointLight.intensity = 0.5;
+        }
+
+        function createEnvironment() {
+            // Create ground
+            const ground = BABYLON.MeshBuilder.CreateGround("ground", {width: 50, height: 50}, scene);
+            const groundMaterial = new BABYLON.StandardMaterial("groundMaterial", scene);
+            groundMaterial.diffuseColor = new BABYLON.Color3(0.2, 0.3, 0.2);
+            groundMaterial.specularColor = new BABYLON.Color3(0, 0, 0);
+            ground.material = groundMaterial;
+            ground.receiveShadows = true;
+
+            // Add physics to ground if available
+            if (physicsEnabled && scene.getPhysicsEngine()) {
+                try {
+                    ground.physicsImpostor = new BABYLON.PhysicsImpostor(ground, BABYLON.PhysicsImpostor.BoxImpostor,
+                        { mass: 0, restitution: 0.7 }, scene);
+                } catch(e) {
+                    console.warn("Could not add physics to ground:", e);
+                }
+            }
+
+            // Create skybox
+            const skybox = BABYLON.MeshBuilder.CreateSphere("skyBox", {diameter:100}, scene);
+            const skyboxMaterial = new BABYLON.StandardMaterial("skyBox", scene);
+            skyboxMaterial.backFaceCulling = false;
+            skyboxMaterial.diffuseColor = new BABYLON.Color3(0, 0.1, 0.2);
+            skyboxMaterial.specularColor = new BABYLON.Color3(0, 0, 0);
+            skybox.material = skyboxMaterial;
+        }
+
+        function createTexturedObjects() {
+            // Create textured cube
+            texturedCube = BABYLON.MeshBuilder.CreateBox("texturedCube", {size: 2}, scene);
+
+            // Create simple colored material for cube (fallback)
+            const cubeMaterial = new BABYLON.StandardMaterial("cubeMaterial", scene);
+            cubeMaterial.diffuseColor = new BABYLON.Color3(1, 0.4, 0.4); // Red-ish color
+            texturedCube.material = cubeMaterial;
+            texturedCube.position = new BABYLON.Vector3(-4, 1, 0);
+
+            // Try to create procedural texture
+            try {
+                const cubeTexture = new BABYLON.DynamicTexture("cubeTexture", {width: 128, height: 128}, scene);
+                const cubeContext = cubeTexture.getContext();
+
+                // Draw checkerboard pattern
+                for (let i = 0; i < 8; i++) {
+                    for (let j = 0; j < 8; j++) {
+                        cubeContext.fillStyle = (i + j) % 2 ? '#ff6b6b' : '#4ecdc4';
+                        cubeContext.fillRect(i * 16, j * 16, 16, 16);
+                    }
+                }
+                cubeTexture.update();
+                cubeMaterial.diffuseTexture = cubeTexture;
+            } catch(e) {
+                console.warn("Could not create cube texture:", e);
+            }
+
+            // Add physics if available
+            if (physicsEnabled && scene.getPhysicsEngine()) {
+                try {
+                    texturedCube.physicsImpostor = new BABYLON.PhysicsImpostor(texturedCube, BABYLON.PhysicsImpostor.BoxImpostor,
+                        { mass: 1, restitution: 0.3 }, scene);
+                } catch(e) {
+                    console.warn("Could not add physics to cube:", e);
+                }
+            }
+
+            // Add to shadow generator if available
+            if (scene.shadowGenerator) {
+                scene.shadowGenerator.addShadowCaster(texturedCube);
+            }
+
+            // Create textured sphere
+            texturedSphere = BABYLON.MeshBuilder.CreateSphere("texturedSphere", {diameter: 3}, scene);
+
+            // Create simple material for sphere
+            const sphereMaterial = new BABYLON.StandardMaterial("sphereMaterial", scene);
+            sphereMaterial.diffuseColor = new BABYLON.Color3(0.2, 0.8, 1); // Blue-ish color
+            sphereMaterial.specularColor = new BABYLON.Color3(1, 1, 1);
+            sphereMaterial.specularPower = 64;
+            texturedSphere.material = sphereMaterial;
+            texturedSphere.position = new BABYLON.Vector3(4, 2, 0);
+
+            // Try to create gradient texture
+            try {
+                const sphereTexture = new BABYLON.DynamicTexture("sphereTexture", {width: 128, height: 128}, scene);
+                const sphereContext = sphereTexture.getContext();
+
+                const gradient = sphereContext.createRadialGradient(64, 64, 0, 64, 64, 64);
+                gradient.addColorStop(0, '#ffbe0b');
+                gradient.addColorStop(0.5, '#fb5607');
+                gradient.addColorStop(1, '#8338ec');
+
+                sphereContext.fillStyle = gradient;
+                sphereContext.fillRect(0, 0, 128, 128);
+                sphereTexture.update();
+                sphereMaterial.diffuseTexture = sphereTexture;
+            } catch(e) {
+                console.warn("Could not create sphere texture:", e);
+            }
+
+            // Add physics if available
+            if (physicsEnabled && scene.getPhysicsEngine()) {
+                try {
+                    texturedSphere.physicsImpostor = new BABYLON.PhysicsImpostor(texturedSphere, BABYLON.PhysicsImpostor.SphereImpostor,
+                        { mass: 0.5, restitution: 0.8 }, scene);
+                } catch(e) {
+                    console.warn("Could not add physics to sphere:", e);
+                }
+            }
+
+            // Add to shadow generator if available
+            if (scene.shadowGenerator) {
+                scene.shadowGenerator.addShadowCaster(texturedSphere);
+            }
+        }
+
+        function loadModel() {
+            // Show loading indicator
+            document.getElementById('loadingStatus').style.display = 'block';
+
+            // Load an animated 3D model using GLTF format
+            BABYLON.SceneLoader.ImportMeshAsync("", "https://playground.babylonjs.com/scenes/BoomBox/", "BoomBox.gltf", scene)
+                .then((result) => {
+                    if (result.meshes.length > 0) {
+                        // Create a root node for the model
+                        loadedModel = new BABYLON.TransformNode("loadedModel", scene);
+
+                        // Parent all meshes to our root node
+                        result.meshes.forEach(mesh => {
+                            if (mesh.parent === null) {
+                                mesh.parent = loadedModel;
+                            }
+                        });
+
+                        loadedModel.position = new BABYLON.Vector3(0, 1, 0);
+                        loadedModel.scaling = new BABYLON.Vector3(100, 100, 100);
+
+                        // Store animation groups
+                        animationGroups = result.animationGroups;
+
+                        if (animationGroups.length > 0) {
+                            // Start the first animation
+                            animationGroups[0].start(true); // true = loop
+                            document.getElementById('currentAnimation').textContent = animationGroups[0].name || `Animation 1`;
+                            console.log(`🎬 Found ${animationGroups.length} animations`);
+                        } else {
+                            document.getElementById('currentAnimation').textContent = 'No animations';
+                        }
+
+                        // Add physics to the main mesh instead of the TransformNode
+                        if (physicsEnabled && scene.getPhysicsEngine()) {
+                            try {
+                                // Find the main mesh with geometry
+                                const mainMesh = result.meshes.find(mesh => mesh.geometry && mesh.getTotalVertices() > 0);
+                                if (mainMesh) {
+                                    mainMesh.physicsImpostor = new BABYLON.PhysicsImpostor(mainMesh,
+                                        BABYLON.PhysicsImpostor.BoxImpostor, { mass: 1, restitution: 0.3 }, scene);
+                                    console.log("✅ Physics added to main mesh");
+                                } else {
+                                    console.warn("No suitable mesh found for physics");
+                                }
+                            } catch(e) {
+                                console.warn("Could not add physics to loaded model:", e);
+                            }
+                        }
+
+                        // Add shadows
+                        if (scene.shadowGenerator) {
+                            result.meshes.forEach(mesh => {
+                                if (mesh.geometry) {
+                                    scene.shadowGenerator.addShadowCaster(mesh);
+                                }
+                            });
+                        }
+
+                        console.log("📻 BoomBox model with animations loaded successfully!");
+                    }
+                    document.getElementById('loadingStatus').style.display = 'none';
+                })
+                .catch((error) => {
+                    console.error("Error loading animated model:", error);
+
+                    // Fallback to a simpler animated model
+                    loadFallbackAnimatedModel();
+                    document.getElementById('loadingStatus').style.display = 'none';
+                });
+        }
+
+        function loadFallbackAnimatedModel() {
+            // Try loading a different animated model as fallback
+            BABYLON.SceneLoader.ImportMeshAsync("", "https://models.babylonjs.com/", "ufo.glb", scene)
+                .then((result) => {
+                    if (result.meshes.length > 0) {
+                        loadedModel = new BABYLON.TransformNode("fallbackModel", scene);
+
+                        result.meshes.forEach(mesh => {
+                            if (mesh.parent === null) {
+                                mesh.parent = loadedModel;
+                            }
+                        });
+
+                        loadedModel.position = new BABYLON.Vector3(0, 2, 0);
+                        loadedModel.scaling = new BABYLON.Vector3(0.5, 0.5, 0.5);
+
+                        animationGroups = result.animationGroups;
+
+                        if (animationGroups.length > 0) {
+                            animationGroups[0].start(true);
+                            document.getElementById('currentAnimation').textContent = animationGroups[0].name || `Animation 1`;
+                        }
+
+                        console.log("🛸 UFO fallback model loaded!");
+                    }
+                })
+                .catch((error) => {
+                    console.error("Fallback model also failed:", error);
+                    createFallbackModel();
+                });
+        }
+
+        function createFallbackModel() {
+            // Create a fallback robot-like model
+            loadedModel = new BABYLON.TransformNode("fallbackRobot", scene);
+
+            // Head
+            const head = BABYLON.MeshBuilder.CreateSphere("head", {diameter: 1}, scene);
+            head.position = new BABYLON.Vector3(0, 2.5, 0);
+            head.parent = loadedModel;
+
+            // Body
+            const body = BABYLON.MeshBuilder.CreateBox("body", {width: 1, height: 1.5, depth: 0.5}, scene);
+            body.position = new BABYLON.Vector3(0, 1, 0);
+            body.parent = loadedModel;
+
+            // Create materials
+            const robotMaterial = new BABYLON.StandardMaterial("robotMaterial", scene);
+            robotMaterial.diffuseColor = new BABYLON.Color3(0.7, 0.7, 0.9);
+            robotMaterial.metallicFactor = 0.8;
+
+            head.material = robotMaterial;
+            body.material = robotMaterial;
+
+            loadedModel.position = new BABYLON.Vector3(0, 0, -4);
+            loadedModel.scaling = new BABYLON.Vector3(1, 1, 1);
+
+            console.log("🤖 Fallback robot model created");
+        }
+
+        function createParticleSystem() {
+            try {
+                // Create a simple fountain particle system
+                particleSystem = new BABYLON.ParticleSystem("particles", 1000, scene);
+
+                // Position and emission
+                particleSystem.emitter = new BABYLON.Vector3(0, 3, 6);
+                particleSystem.minEmitBox = new BABYLON.Vector3(-0.5, 0, 0);
+                particleSystem.maxEmitBox = new BABYLON.Vector3(0.5, 0, 0);
+
+                // Colors
+                particleSystem.color1 = new BABYLON.Color4(0.7, 0.8, 1.0, 1.0);
+                particleSystem.color2 = new BABYLON.Color4(0.2, 0.5, 1.0, 1.0);
+                particleSystem.colorDead = new BABYLON.Color4(0, 0, 0.2, 0.0);
+
+                // Size and life
+                particleSystem.minSize = 0.1;
+                particleSystem.maxSize = 0.3;
+                particleSystem.minLifeTime = 0.5;
+                particleSystem.maxLifeTime = 1.0;
+
+                // Emission rate
+                particleSystem.emitRate = 800;
+
+                // Gravity and direction
+                particleSystem.gravity = new BABYLON.Vector3(0, -5, 0);
+                particleSystem.direction1 = new BABYLON.Vector3(-1, 5, 1);
+                particleSystem.direction2 = new BABYLON.Vector3(1, 5, -1);
+
+                // Speed
+                particleSystem.minEmitPower = 1;
+                particleSystem.maxEmitPower = 2;
+                particleSystem.updateSpeed = 0.02;
+
+                particleSystem.start();
+                console.log("✨ Particle system created");
+            } catch(e) {
+                console.warn("Could not create particle system:", e);
+            }
+        }
+
+        function setupDeviceMotion() {
+            if (typeof DeviceOrientationEvent !== 'undefined') {
+                if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+                    // iOS 13+ requires permission
+                } else {
+                    enableDeviceMotion();
+                }
+            }
+        }
+
+        function enableDeviceMotion() {
+            if (window.DeviceOrientationEvent) {
+                window.addEventListener('deviceorientation', handleOrientation, false);
+                deviceMotionEnabled = true;
+                document.getElementById('deviceMotionStatus').textContent = 'Enabled';
+                console.log("📱 Device motion enabled");
+            }
+        }
+
+        function handleOrientation(event) {
+            deviceOrientation.alpha = event.alpha || 0;
+            deviceOrientation.beta = event.beta || 0;
+            deviceOrientation.gamma = event.gamma || 0;
+
+            // Update display
+            document.getElementById('alphaValue').textContent = Math.round(deviceOrientation.alpha);
+            document.getElementById('betaValue').textContent = Math.round(deviceOrientation.beta);
+            document.getElementById('gammaValue').textContent = Math.round(deviceOrientation.gamma);
+
+            // Apply device motion to loaded model
+            if (loadedModel && deviceMotionEnabled) {
+                const alphaRad = deviceOrientation.alpha * Math.PI / 180;
+                const betaRad = deviceOrientation.beta * Math.PI / 180;
+                const gammaRad = deviceOrientation.gamma * Math.PI / 180;
+
+                if (physicsEnabled) {
+                    // Find a mesh with physics impostor to apply forces
+                    const meshesWithPhysics = scene.meshes.filter(mesh => mesh.physicsImpostor);
+                    if (meshesWithPhysics.length > 0) {
+                        const targetMesh = meshesWithPhysics[0];
+                        const force = new BABYLON.Vector3(
+                            Math.sin(gammaRad) * 8,
+                            0,
+                            Math.sin(betaRad) * 8
+                        );
+                        targetMesh.physicsImpostor.applyImpulse(force, targetMesh.getAbsolutePosition());
+                    }
+                } else {
+                    // Rotate the entire model when physics is disabled
+                    loadedModel.rotation.y = alphaRad * 0.02;
+                    loadedModel.rotation.z = gammaRad * 0.1;
+                }
+            }
+        }
+
+        function setupControls() {
+            // Gravity slider
+            document.getElementById('gravitySlider').addEventListener('input', function(e) {
+                const gravity = parseFloat(e.target.value);
+                scene.getPhysicsEngine().setGravity(new BABYLON.Vector3(0, -gravity, 0));
+            });
+        }
+
+        function animateObjects() {
+            const time = performance.now() * 0.001;
+
+            if (!deviceMotionEnabled && loadedModel) {
+                // Add gentle floating motion when physics is disabled
+                if (!physicsEnabled && animationGroups.length === 0) {
+                    // Only add manual rotation if no built-in animations
+                    loadedModel.rotation.y += 0.01;
+                    loadedModel.position.y = loadedModel.position.y + Math.sin(time * 1.5) * 0.002;
+                }
+            }
+        }
+
+        // Global control functions
+        window.goBack = function() {
+            window.location.href = '../index.html';
+        };
+
+        window.requestDevicePermission = function() {
+            if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+                DeviceOrientationEvent.requestPermission()
+                    .then(response => {
+                        if (response == 'granted') {
+                            enableDeviceMotion();
+                        }
+                    })
+                    .catch(console.error);
+            } else {
+                enableDeviceMotion();
+            }
+        };
+
+        window.toggleAnimation = function() {
+            animationEnabled = !animationEnabled;
+        };
+
+        window.resetScene = function() {
+            if (loadedModel) {
+                loadedModel.position = new BABYLON.Vector3(0, 1, 0);
+                loadedModel.rotation = BABYLON.Vector3.Zero();
+
+                // Reset physics velocities for all meshes with physics
+                const meshesWithPhysics = scene.meshes.filter(mesh => mesh.physicsImpostor);
+                meshesWithPhysics.forEach(mesh => {
+                    try {
+                        mesh.physicsImpostor.setLinearVelocity(BABYLON.Vector3.Zero());
+                        mesh.physicsImpostor.setAngularVelocity(BABYLON.Vector3.Zero());
+                    } catch(e) {
+                        console.warn("Could not reset physics for mesh:", e);
+                    }
+                });
+
+                // Restart current animation
+                if (animationGroups.length > 0 && currentAnimationIndex < animationGroups.length) {
+                    animationGroups[currentAnimationIndex].restart();
+                }
+
+                console.log("🔄 Scene reset completed");
+            }
+        };
+
+        window.togglePhysics = function() {
+            physicsEnabled = !physicsEnabled;
+            document.getElementById('physicsStatus').textContent = physicsEnabled ? 'Enabled' : 'Disabled';
+
+            if (physicsEnabled) {
+                scene.enablePhysics(new BABYLON.Vector3(0, -9.8, 0), new BABYLON.CannonJSPlugin());
+            } else {
+                scene.disablePhysicsEngine();
+            }
+        };
+
+        window.addRandomBox = function() {
+            const box = BABYLON.MeshBuilder.CreateBox("physicsBox" + physicsBoxes.length, {size: 1}, scene);
+            const material = new BABYLON.StandardMaterial("boxMaterial", scene);
+            material.diffuseColor = new BABYLON.Color3(Math.random(), Math.random(), Math.random());
+            box.material = material;
+
+            box.position = new BABYLON.Vector3(
+                (Math.random() - 0.5) * 10,
+                10,
+                (Math.random() - 0.5) * 10
+            );
+
+            box.physicsImpostor = new BABYLON.PhysicsImpostor(box, BABYLON.PhysicsImpostor.BoxImpostor,
+                { mass: 1, restitution: 0.5 }, scene);
+            scene.shadowGenerator.addShadowCaster(box);
+
+            physicsBoxes.push(box);
+        };
+
+        window.shootBall = function() {
+            const ball = BABYLON.MeshBuilder.CreateSphere("bullet", {diameter: 0.5}, scene);
+            const material = new BABYLON.StandardMaterial("bulletMaterial", scene);
+            material.diffuseColor = new BABYLON.Color3(1, 0, 0);
+            ball.material = material;
+
+            const cameraPos = camera.position;
+            ball.position = cameraPos.clone();
+
+            ball.physicsImpostor = new BABYLON.PhysicsImpostor(ball, BABYLON.PhysicsImpostor.SphereImpostor,
+                { mass: 0.1, restitution: 0.9 }, scene);
+
+            // Shoot towards the center
+            const direction = BABYLON.Vector3.Zero().subtract(cameraPos).normalize();
+            ball.physicsImpostor.applyImpulse(direction.scale(20), ball.getAbsolutePosition());
+
+            // Remove after 10 seconds
+            setTimeout(() => {
+                ball.dispose();
+            }, 10000);
+        };
+
+        // Animation control functions
+        window.switchAnimation = function() {
+            if (animationGroups.length > 1) {
+                // Stop current animation
+                animationGroups[currentAnimationIndex].stop();
+
+                // Move to next animation
+                currentAnimationIndex = (currentAnimationIndex + 1) % animationGroups.length;
+
+                // Start new animation
+                animationGroups[currentAnimationIndex].start(true);
+
+                // Update display
+                const animName = animationGroups[currentAnimationIndex].name || `Animation ${currentAnimationIndex + 1}`;
+                document.getElementById('currentAnimation').textContent = animName;
+
+                console.log(`🎬 Switched to: ${animName}`);
+            } else {
+                console.log("No multiple animations available to switch");
+            }
+        };
+
+        window.pauseAnimation = function() {
+            if (animationGroups.length > 0 && currentAnimationIndex < animationGroups.length) {
+                const currentAnim = animationGroups[currentAnimationIndex];
+
+                if (currentAnim.isPlaying) {
+                    currentAnim.pause();
+                    console.log("🎬 Animation paused");
+                } else {
+                    currentAnim.play(true); // true = loop
+                    console.log("🎬 Animation resumed");
+                }
+            }
+        };
+
+        // Initialize when page loads
+        window.addEventListener('DOMContentLoaded', initBabylon);
+    </script>
+</body>
+</html>

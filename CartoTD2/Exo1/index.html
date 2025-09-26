@@ -261,31 +261,91 @@
         }
 
         function loadGLTFModel() {
-            // Create a simple 3D model since we don't have a GLTF file to load
+            const loader = new GLTFLoader();
+
+            // Load a character model from a public CDN
+            loader.load(
+                'https://threejs.org/examples/models/gltf/RobotExpressive/RobotExpressive.glb',
+                function (gltf) {
+                    loadedModel = gltf.scene;
+                    loadedModel.position.set(0, -1, -4);
+                    loadedModel.scale.set(0.8, 0.8, 0.8);
+
+                    // Enable shadows for the model
+                    loadedModel.traverse(function(child) {
+                        if (child.isMesh) {
+                            child.castShadow = true;
+                            child.receiveShadow = true;
+                        }
+                    });
+
+                    scene.add(loadedModel);
+                    console.log('Robot model loaded successfully!');
+
+                    // Optional: Access animations if the model has them
+                    if (gltf.animations && gltf.animations.length > 0) {
+                        const mixer = new THREE.AnimationMixer(loadedModel);
+                        const action = mixer.clipAction(gltf.animations[0]);
+                        action.play();
+
+                        // Store mixer for animation updates
+                        loadedModel.mixer = mixer;
+                    }
+                },
+                function (progress) {
+                    console.log('Loading progress:', (progress.loaded / progress.total * 100) + '%');
+                },
+                function (error) {
+                    console.error('Error loading robot model:', error);
+                    // Fallback to simple geometry if loading fails
+                    createFallbackModel();
+                }
+            );
+        }
+
+        function createFallbackModel() {
+            // Fallback model in case the GLTF fails to load
             const group = new THREE.Group();
 
-            // Create a diamond-like shape
-            const topGeometry = new THREE.ConeGeometry(1, 1.5, 6);
-            const bottomGeometry = new THREE.ConeGeometry(1, 1.5, 6);
-            const material = new THREE.MeshPhongMaterial({
-                color: 0xff9500,
-                transparent: true,
-                opacity: 0.8
-            });
+            // Create a simple humanoid shape
+            // Head
+            const headGeometry = new THREE.SphereGeometry(0.5, 16, 16);
+            const headMaterial = new THREE.MeshPhongMaterial({ color: 0xffdbac });
+            const head = new THREE.Mesh(headGeometry, headMaterial);
+            head.position.y = 2.5;
 
-            const topCone = new THREE.Mesh(topGeometry, material);
-            topCone.position.y = 0.75;
+            // Body
+            const bodyGeometry = new THREE.BoxGeometry(1, 1.5, 0.5);
+            const bodyMaterial = new THREE.MeshPhongMaterial({ color: 0x4169E1 });
+            const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+            body.position.y = 1;
 
-            const bottomCone = new THREE.Mesh(bottomGeometry, material);
-            bottomCone.position.y = -0.75;
-            bottomCone.rotation.x = Math.PI;
+            // Arms
+            const armGeometry = new THREE.BoxGeometry(0.3, 1, 0.3);
+            const armMaterial = new THREE.MeshPhongMaterial({ color: 0xffdbac });
 
-            group.add(topCone);
-            group.add(bottomCone);
-            group.position.set(0, 2, -4);
+            const leftArm = new THREE.Mesh(armGeometry, armMaterial);
+            leftArm.position.set(-0.8, 1.2, 0);
+
+            const rightArm = new THREE.Mesh(armGeometry, armMaterial);
+            rightArm.position.set(0.8, 1.2, 0);
+
+            // Legs
+            const legGeometry = new THREE.BoxGeometry(0.4, 1.2, 0.4);
+            const legMaterial = new THREE.MeshPhongMaterial({ color: 0x2F4F4F });
+
+            const leftLeg = new THREE.Mesh(legGeometry, legMaterial);
+            leftLeg.position.set(-0.3, -0.3, 0);
+
+            const rightLeg = new THREE.Mesh(legGeometry, legMaterial);
+            rightLeg.position.set(0.3, -0.3, 0);
+
+            group.add(head, body, leftArm, rightArm, leftLeg, rightLeg);
+            group.position.set(0, 0, -4);
 
             loadedModel = group;
             scene.add(loadedModel);
+            console.log('Fallback humanoid model created');
         }
 
         function setupDeviceMotion() {
@@ -385,9 +445,14 @@
                     sphere.position.y = Math.sin(Date.now() * 0.002) * 0.5;
                 }
 
-                // Rotate the loaded model
+                // Rotate the loaded model and update animations
                 if (loadedModel && !deviceMotionEnabled) {
                     loadedModel.rotation.y += 0.005;
+                }
+
+                // Update model animations if they exist
+                if (loadedModel && loadedModel.mixer) {
+                    loadedModel.mixer.update(0.016); // 16ms for 60fps
                 }
 
                 // Animate particles (rain effect)
