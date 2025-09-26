@@ -18,38 +18,112 @@
             color: white;
             font-family: Arial, sans-serif;
             font-size: 14px;
+            background: rgba(0,0,0,0.7);
+            padding: 10px;
+            border-radius: 5px;
+            z-index: 100;
+        }
+        #controls {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            color: white;
+            font-size: 12px;
+            background: rgba(0,0,0,0.7);
+            padding: 10px;
+            border-radius: 5px;
+            z-index: 100;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 3px;
+            cursor: pointer;
+            margin: 2px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        #deviceStatus {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            color: white;
+            font-size: 12px;
+            background: rgba(0,0,0,0.7);
+            padding: 10px;
+            border-radius: 5px;
+            z-index: 100;
         }
     </style>
 </head>
 <body>
-    <div id="info">Three.js Basic Scene with Camera, Light, and Renderer</div>
+    <div id="info">
+        <strong>Three.js Advanced Scene</strong><br>
+        Rotate your phone to control objects<br>
+        Use device motion for interaction
+    </div>
+
+    <div id="controls">
+        <button onclick="requestDevicePermission()">Enable Device Motion</button><br>
+        <button onclick="toggleAnimation()">Toggle Animation</button><br>
+        <button onclick="resetObjects()">Reset Objects</button>
+    </div>
+
+    <div id="deviceStatus">
+        Device Motion: <span id="deviceMotionStatus">Disabled</span><br>
+        Alpha: <span id="alphaValue">0</span>°<br>
+        Beta: <span id="betaValue">0</span>°<br>
+        Gamma: <span id="gammaValue">0</span>°
+    </div>
 
     <script type="importmap">
         {
             "imports": {
-                "three": "https://unpkg.com/three@0.168.0/build/three.module.js"
+                "three": "https://unpkg.com/three@0.168.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.168.0/examples/jsm/"
             }
         }
     </script>
     <script type="module">
         import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // Global variables
+        let scene, camera, renderer, controls;
+        let cube, sphere, loadedModel, particleSystem;
+        let animationEnabled = true;
+        let deviceMotionEnabled = false;
+        let deviceOrientation = { alpha: 0, beta: 0, gamma: 0 };
 
         // Scene setup
-        const scene = new THREE.Scene();
+        scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x001122, 0.002);
 
         // Camera setup
-        const camera = new THREE.PerspectiveCamera(
+        camera = new THREE.PerspectiveCamera(
             75, // field of view
             window.innerWidth / window.innerHeight, // aspect ratio
             0.1, // near clipping plane
             1000 // far clipping plane
         );
+        camera.position.set(0, 2, 8);
 
         // Renderer setup
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setClearColor(0x222222);
+        renderer.setClearColor(0x001122);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         document.body.appendChild(renderer.domElement);
+
+        // Controls setup
+        controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
 
         // Lighting setup
         // Ambient light for overall illumination
@@ -58,27 +132,288 @@
 
         // Directional light for shadows and definition
         const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
-        directionalLight.position.set(5, 5, 5);
+        directionalLight.position.set(10, 10, 5);
+        directionalLight.castShadow = true;
+        directionalLight.shadow.mapSize.width = 2048;
+        directionalLight.shadow.mapSize.height = 2048;
         scene.add(directionalLight);
 
-        // Create a basic geometry (rotating cube)
-        const geometry = new THREE.BoxGeometry(2, 2, 2);
-        const material = new THREE.MeshLambertMaterial({ color: 0x00ff00 });
-        const cube = new THREE.Mesh(geometry, material);
-        scene.add(cube);
+        // Point light for extra color
+        const pointLight = new THREE.PointLight(0x00ffff, 0.5);
+        pointLight.position.set(-5, 5, -5);
+        scene.add(pointLight);
 
-        // Position camera
-        camera.position.z = 5;
+        // Create textured cube
+        createTexturedCube();
+
+        // Create textured sphere
+        createTexturedSphere();
+
+        // Create particle system
+        createParticleSystem();
+
+        // Load 3D model
+        loadGLTFModel();
+
+        // Setup device motion
+        setupDeviceMotion();
+
+        // Create ground plane
+        const groundGeometry = new THREE.PlaneGeometry(50, 50);
+        const groundMaterial = new THREE.MeshLambertMaterial({ color: 0x333333 });
+        const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+        ground.rotation.x = -Math.PI / 2;
+        ground.position.y = -3;
+        ground.receiveShadow = true;
+        scene.add(ground);
+
+        function createTexturedCube() {
+            const geometry = new THREE.BoxGeometry(2, 2, 2);
+
+            // Create a procedural checkerboard texture
+            const canvas = document.createElement('canvas');
+            canvas.width = 128;
+            canvas.height = 128;
+            const context = canvas.getContext('2d');
+
+            for (let i = 0; i < 8; i++) {
+                for (let j = 0; j < 8; j++) {
+                    context.fillStyle = (i + j) % 2 ? '#ff6b6b' : '#4ecdc4';
+                    context.fillRect(i * 16, j * 16, 16, 16);
+                }
+            }
+
+            const texture = new THREE.CanvasTexture(canvas);
+            const material = new THREE.MeshLambertMaterial({ map: texture });
+
+            cube = new THREE.Mesh(geometry, material);
+            cube.position.set(-3, 0, 0);
+            cube.castShadow = true;
+            scene.add(cube);
+        }
+
+        function createTexturedSphere() {
+            const geometry = new THREE.SphereGeometry(1.5, 32, 32);
+
+            // Create a gradient texture
+            const canvas = document.createElement('canvas');
+            canvas.width = 128;
+            canvas.height = 128;
+            const context = canvas.getContext('2d');
+
+            const gradient = context.createRadialGradient(64, 64, 0, 64, 64, 64);
+            gradient.addColorStop(0, '#ffbe0b');
+            gradient.addColorStop(0.5, '#fb5607');
+            gradient.addColorStop(1, '#8338ec');
+
+            context.fillStyle = gradient;
+            context.fillRect(0, 0, 128, 128);
+
+            const texture = new THREE.CanvasTexture(canvas);
+            const material = new THREE.MeshPhongMaterial({
+                map: texture,
+                shininess: 100
+            });
+
+            sphere = new THREE.Mesh(geometry, material);
+            sphere.position.set(3, 0, 0);
+            sphere.castShadow = true;
+            scene.add(sphere);
+        }
+
+        function createParticleSystem() {
+            const particleCount = 1500;
+            const particles = new THREE.BufferGeometry();
+            const positions = [];
+            const velocities = [];
+            const colors = [];
+
+            for (let i = 0; i < particleCount; i++) {
+                positions.push((Math.random() - 0.5) * 80);
+                positions.push(Math.random() * 40 + 10);
+                positions.push((Math.random() - 0.5) * 80);
+
+                // Add random velocity for more realistic rain movement
+                velocities.push((Math.random() - 0.5) * 0.5); // slight horizontal drift
+                velocities.push(-Math.random() * 0.5 - 0.2); // downward velocity
+                velocities.push((Math.random() - 0.5) * 0.2); // slight depth movement
+
+                // Rain drops are more blue-white
+                colors.push(0.6 + Math.random() * 0.4); // R
+                colors.push(0.8 + Math.random() * 0.2); // G
+                colors.push(0.9 + Math.random() * 0.1); // B
+            }
+
+            particles.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+            particles.setAttribute('velocity', new THREE.Float32BufferAttribute(velocities, 3));
+            particles.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+
+            const particleMaterial = new THREE.PointsMaterial({
+                size: 0.8, // Slightly larger for rain drops
+                vertexColors: true,
+                transparent: true,
+                opacity: 0.7
+            });
+
+            particleSystem = new THREE.Points(particles, particleMaterial);
+            scene.add(particleSystem);
+        }
+
+        function loadGLTFModel() {
+            // Create a simple 3D model since we don't have a GLTF file to load
+            const group = new THREE.Group();
+
+            // Create a diamond-like shape
+            const topGeometry = new THREE.ConeGeometry(1, 1.5, 6);
+            const bottomGeometry = new THREE.ConeGeometry(1, 1.5, 6);
+            const material = new THREE.MeshPhongMaterial({
+                color: 0xff9500,
+                transparent: true,
+                opacity: 0.8
+            });
+
+            const topCone = new THREE.Mesh(topGeometry, material);
+            topCone.position.y = 0.75;
+
+            const bottomCone = new THREE.Mesh(bottomGeometry, material);
+            bottomCone.position.y = -0.75;
+            bottomCone.rotation.x = Math.PI;
+
+            group.add(topCone);
+            group.add(bottomCone);
+            group.position.set(0, 2, -4);
+
+            loadedModel = group;
+            scene.add(loadedModel);
+        }
+
+        function setupDeviceMotion() {
+            if (typeof DeviceOrientationEvent !== 'undefined') {
+                if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+                    // iOS 13+ requires permission request
+                } else {
+                    // Other browsers
+                    enableDeviceMotion();
+                }
+            }
+        }
+
+        function enableDeviceMotion() {
+            if (window.DeviceOrientationEvent) {
+                window.addEventListener('deviceorientation', handleOrientation, false);
+                deviceMotionEnabled = true;
+                document.getElementById('deviceMotionStatus').textContent = 'Enabled';
+            }
+        }
+
+        function handleOrientation(event) {
+            deviceOrientation.alpha = event.alpha || 0;
+            deviceOrientation.beta = event.beta || 0;
+            deviceOrientation.gamma = event.gamma || 0;
+
+            // Update display
+            document.getElementById('alphaValue').textContent = Math.round(deviceOrientation.alpha);
+            document.getElementById('betaValue').textContent = Math.round(deviceOrientation.beta);
+            document.getElementById('gammaValue').textContent = Math.round(deviceOrientation.gamma);
+
+            // Apply transformations based on device orientation
+            if (cube && sphere && loadedModel) {
+                const alphaRad = deviceOrientation.alpha * Math.PI / 180;
+                const betaRad = deviceOrientation.beta * Math.PI / 180;
+                const gammaRad = deviceOrientation.gamma * Math.PI / 180;
+
+                // Move cube based on gamma (left-right tilt)
+                cube.position.x = -3 + Math.sin(gammaRad) * 2;
+                cube.rotation.z = gammaRad * 0.5;
+
+                // Move sphere based on beta (front-back tilt)
+                sphere.position.z = Math.sin(betaRad * 0.02) * 3;
+                sphere.position.y = Math.abs(Math.sin(betaRad * 0.02)) * 2;
+
+                // Rotate loaded model based on alpha (compass)
+                loadedModel.rotation.y = alphaRad * 0.02;
+            }
+        }
+
+        // Global functions for button controls
+        window.requestDevicePermission = function() {
+            if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+                DeviceOrientationEvent.requestPermission()
+                    .then(response => {
+                        if (response == 'granted') {
+                            enableDeviceMotion();
+                        }
+                    })
+                    .catch(console.error);
+            } else {
+                enableDeviceMotion();
+            }
+        };
+
+        window.toggleAnimation = function() {
+            animationEnabled = !animationEnabled;
+        };
+
+        window.resetObjects = function() {
+            cube.position.set(-3, 0, 0);
+            cube.rotation.set(0, 0, 0);
+            sphere.position.set(3, 0, 0);
+            sphere.rotation.set(0, 0, 0);
+            if (loadedModel) {
+                loadedModel.position.set(0, 2, -4);
+                loadedModel.rotation.set(0, 0, 0);
+            }
+        };
 
         // Animation loop
         function animate() {
             requestAnimationFrame(animate);
 
-            // Rotate the cube
-            cube.rotation.x += 0.01;
-            cube.rotation.y += 0.01;
+            if (animationEnabled) {
+                // Rotate the cube
+                cube.rotation.x += 0.01;
+                cube.rotation.y += 0.01;
 
-            // Render the scene
+                // Animate the sphere
+                sphere.rotation.x += 0.02;
+                if (!deviceMotionEnabled) {
+                    sphere.position.y = Math.sin(Date.now() * 0.002) * 0.5;
+                }
+
+                // Rotate the loaded model
+                if (loadedModel && !deviceMotionEnabled) {
+                    loadedModel.rotation.y += 0.005;
+                }
+
+                // Animate particles (rain effect)
+                if (particleSystem) {
+                    const positions = particleSystem.geometry.attributes.position.array;
+                    const velocities = particleSystem.geometry.attributes.velocity.array;
+
+                    for (let i = 0; i < positions.length; i += 3) {
+                        // Apply velocity to position
+                        positions[i] += velocities[i]; // X movement (horizontal drift)
+                        positions[i + 1] += velocities[i + 1] * 2; // Y movement (faster falling)
+                        positions[i + 2] += velocities[i + 2]; // Z movement (depth)
+
+                        // Reset rain drop when it hits the ground
+                        if (positions[i + 1] < -5) {
+                            positions[i] = (Math.random() - 0.5) * 80; // Random X
+                            positions[i + 1] = 50; // Reset to top
+                            positions[i + 2] = (Math.random() - 0.5) * 80; // Random Z
+                        }
+
+                        // Keep rain within bounds horizontally
+                        if (positions[i] > 40) positions[i] = -40;
+                        if (positions[i] < -40) positions[i] = 40;
+                        if (positions[i + 2] > 40) positions[i + 2] = -40;
+                        if (positions[i + 2] < -40) positions[i + 2] = 40;
+                    }
+                    particleSystem.geometry.attributes.position.needsUpdate = true;
+                }
+            }
+
+            controls.update();
             renderer.render(scene, camera);
         }
 
