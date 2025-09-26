@@ -67,6 +67,7 @@
     </div>
 
     <div id="controls">
+        <button onclick="goBack()">← Retour</button><br>
         <button onclick="requestDevicePermission()">Enable Device Motion</button><br>
         <button onclick="toggleAnimation()">Toggle Animation</button><br>
         <button onclick="resetObjects()">Reset Objects</button>
@@ -363,6 +364,10 @@
                 loadedModel.position.set(0, 2, -4);
                 loadedModel.rotation.set(0, 0, 0);
             }
+        };
+
+        window.goBack = function() {
+            window.location.href = '../index.html';
         };
 
         // Animation loop
