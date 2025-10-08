@@ -4,6 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TD3 - Géolocalisation et 3D avec Three.js</title>
+
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
     <style>
         * {
             margin: 0;
@@ -20,11 +24,29 @@
         #canvas-container {
             width: 100vw;
             height: 100vh;
+            position: relative;
+        }
+
+        #map-container {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            width: 400px;
+            height: 300px;
+            z-index: 150;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+        }
+
+        #map {
+            width: 100%;
+            height: 100%;
         }
 
         #info {
             position: absolute;
-            top: 20px;
+            top: 340px;
             left: 20px;
             background: rgba(0, 0, 0, 0.7);
             color: white;
@@ -78,9 +100,8 @@
         #country-modal {
             display: none;
             position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
+            bottom: 20px;
+            right: 20px;
             background: rgba(255, 255, 255, 0.95);
             padding: 30px;
             border-radius: 15px;
@@ -145,6 +166,11 @@
 
     <div id="canvas-container"></div>
 
+    <!-- Conteneur de la carte Leaflet -->
+    <div id="map-container">
+        <div id="map"></div>
+    </div>
+
     <!-- Modal pour les informations du pays -->
     <div id="country-modal">
         <button class="close-btn" id="close-modal-btn">×</button>
@@ -152,6 +178,9 @@
         <p><span class="info-label">Population :</span> <span id="modal-population"></span></p>
         <p><span class="info-label">Superficie :</span> <span id="modal-area"></span></p>
     </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
     <script type="importmap">
         {
@@ -173,14 +202,33 @@
         const EARTH_RADIUS = 5;
         const raycaster = new THREE.Raycaster();
         const mouse = new THREE.Vector2();
+        let leafletMap;
+        const leafletMarkers = [];
+        const countriesData = [];
+        let autoRotate = true; // Réactiver la rotation automatique
+        let isAnimatingRotation = false;
 
-        // Fonction de conversion Lat/Lon en coordonnées cartésiennes
+        // Fonction de conversion Lat/Lon en coordonnées cartésiennes (pour les drapeaux)
         function latLonToCartesian(lat, lon, radius = EARTH_RADIUS) {
             // Conversion des degrés en radians
             const phi = (90 - lat) * (Math.PI / 180);  // latitude (du pôle nord)
             const theta = (lon + 180) * (Math.PI / 180); // longitude
 
             // Coordonnées cartésiennes (système Three.js: Y = up, X = right, Z = forward)
+            const x = -radius * Math.sin(phi) * Math.cos(theta);
+            const y = radius * Math.cos(phi);
+            const z = radius * Math.sin(phi) * Math.sin(theta);
+
+            return new THREE.Vector3(x, y, z);
+        }
+
+        // Fonction de conversion Lat/Lon pour la caméra (sans le décalage de 180°)
+        function latLonToCartesianForCamera(lat, lon, radius = EARTH_RADIUS) {
+            // Conversion des degrés en radians
+            const phi = (90 - lat) * (Math.PI / 180);  // latitude (du pôle nord)
+            const theta = (lon + 180) * (Math.PI / 180); // longitude avec décalage de texture
+
+            // Coordonnées cartésiennes
             const x = -radius * Math.sin(phi) * Math.cos(theta);
             const y = radius * Math.cos(phi);
             const z = radius * Math.sin(phi) * Math.sin(theta);
@@ -296,7 +344,9 @@
                     sprite.userData = {
                         countryName: countryData.name,
                         population: countryData.population,
-                        area: countryData.area
+                        area: countryData.area,
+                        lat: countryData.lat,
+                        lon: countryData.lon
                     };
 
                     // Ajouter un point lumineux
@@ -349,22 +399,41 @@
         // Récupération des pays via l'API REST Countries
         async function fetchCountries() {
             try {
-                // Sélection de pays de tous les continents
-                const countryCodes = ['FR', 'US', 'JP', 'BR', 'AU', 'ZA', 'IN', 'CA',
-                                     'GB', 'DE', 'IT', 'ES', 'RU', 'CN', 'KR', 'TH',
-                                     'EG', 'MA', 'KE', 'NG', 'MX', 'AR', 'CL', 'PE',
-                                     'NZ', 'ID', 'PH', 'VN', 'TR', 'SA', 'AE', 'IL'];
+                // Liste étendue de pays (tous les continents)
+                const countryCodes = [
+                    // Europe
+                    'FR', 'GB', 'DE', 'IT', 'ES', 'PT', 'NL', 'BE', 'CH', 'AT', 'SE', 'NO', 'DK', 'FI', 'IS',
+                    'IE', 'PL', 'CZ', 'HU', 'RO', 'BG', 'GR', 'HR', 'RS', 'UA', 'RU',
+                    // Amérique du Nord
+                    'US', 'CA', 'MX', 'GT', 'CU', 'PA', 'CR', 'DO', 'JM',
+                    // Amérique du Sud
+                    'BR', 'AR', 'CL', 'CO', 'PE', 'VE', 'EC', 'BO', 'PY', 'UY',
+                    // Asie
+                    'CN', 'JP', 'IN', 'KR', 'TH', 'VN', 'PH', 'ID', 'MY', 'SG', 'KH', 'LA', 'MM',
+                    'PK', 'BD', 'AF', 'IR', 'IQ', 'SA', 'AE', 'IL', 'JO', 'LB', 'SY', 'TR', 'KZ', 'UZ',
+                    // Afrique
+                    'EG', 'ZA', 'NG', 'KE', 'MA', 'DZ', 'TN', 'LY', 'SD', 'ET', 'GH', 'TZ', 'UG', 'AO',
+                    'CI', 'CM', 'SN', 'ZW', 'MZ', 'MG',
+                    // Océanie
+                    'AU', 'NZ', 'FJ', 'PG', 'NC'
+                ];
 
                 const promises = countryCodes.map(code =>
                     fetch(`https://restcountries.com/v3.1/alpha/${code}`)
                         .then(response => response.json())
+                        .catch(err => {
+                            console.warn(`Erreur pour ${code}:`, err);
+                            return null;
+                        })
                 );
 
                 const results = await Promise.all(promises);
                 let countryCount = 0;
 
                 results.forEach(data => {
-                    const country = data[0];
+                    if (!data) return;
+                    const country = Array.isArray(data) ? data[0] : data;
+
                     if (country && country.latlng && country.flags) {
                         const [lat, lon] = country.latlng;
                         const flagUrl = country.flags.png;
@@ -372,10 +441,14 @@
                         const countryData = {
                             name: country.name.common,
                             population: country.population,
-                            area: country.area
+                            area: country.area,
+                            lat: lat,
+                            lon: lon
                         };
 
+                        countriesData.push(countryData);
                         createFlagMarker(lat, lon, flagUrl, countryData);
+                        addLeafletMarker(lat, lon, countryData);
                         countryCount++;
                     }
                 });
@@ -394,8 +467,8 @@
         function animate() {
             requestAnimationFrame(animate);
 
-            // Rotation lente de la Terre
-            if (earthGroup) {
+            // Rotation lente de la Terre (seulement si pas d'animation manuelle en cours)
+            if (earthGroup && autoRotate && !isAnimatingRotation) {
                 earthGroup.rotation.y += 0.001;
             }
 
@@ -422,6 +495,11 @@
                 if (clickedObject.userData && clickedObject.userData.countryName) {
                     const data = clickedObject.userData;
                     showCountryInfo(data);
+
+                    // Recentrer la carte Leaflet sur ce pays
+                    if (leafletMap && data.lat && data.lon) {
+                        leafletMap.setView([data.lat, data.lon], 5);
+                    }
                 }
             }
         }
@@ -444,11 +522,118 @@
             document.getElementById('country-modal').style.display = 'none';
         }
 
+        // Initialiser la carte Leaflet
+        function initLeafletMap() {
+            console.log('Initialisation de Leaflet');
+            leafletMap = L.map('map').setView([20, 0], 2);
+
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors',
+                maxZoom: 18
+            }).addTo(leafletMap);
+
+            // Gestionnaire de clic sur la carte
+            leafletMap.on('click', function(e) {
+                const lat = e.latlng.lat;
+                const lon = e.latlng.lng;
+
+                console.log(`Clic Leaflet détecté: lat=${lat}, lon=${lon}`);
+
+                // Repositionner la Terre 3D sur cet endroit
+                rotateEarthToPosition(lat, lon);
+            });
+        }
+
+        // Ajouter un marqueur sur la carte Leaflet
+        function addLeafletMarker(lat, lon, countryData) {
+            const marker = L.marker([lat, lon]).addTo(leafletMap);
+            marker.bindPopup(`<b>${countryData.name}</b><br>Population: ${countryData.population.toLocaleString('fr-FR')}`);
+
+            // Gestionnaire de clic sur le marqueur
+            marker.on('click', function() {
+                rotateEarthToPosition(lat, lon);
+            });
+
+            leafletMarkers.push(marker);
+        }
+
+        // Rotation de la Terre vers une position spécifique
+        function rotateEarthToPosition(lat, lon) {
+            if (!earthGroup || !camera || !controls) return;
+
+            console.log(`Clic sur lat: ${lat}, lon: ${lon}`);
+
+            // Arrêter la rotation automatique pendant l'animation
+            isAnimatingRotation = true;
+
+            // Calculer la position cartésienne du point sur la Terre
+            const targetPositionLocal = latLonToCartesianForCamera(lat, lon, EARTH_RADIUS);
+            console.log(`Position cartésienne locale:`, targetPositionLocal);
+
+            // Convertir en coordonnées monde en tenant compte de la rotation actuelle de earthGroup
+            const targetPositionWorld = targetPositionLocal.clone();
+            earthGroup.localToWorld(targetPositionWorld);
+            console.log(`Position cartésienne monde:`, targetPositionWorld);
+
+            // Position de départ de la caméra
+            const startPosition = camera.position.clone();
+            const centerPosition = new THREE.Vector3(0, 0, 0);
+            const distance = startPosition.length();
+
+            // La caméra doit regarder ce point depuis l'extérieur
+            // Placer la caméra du même côté que le point mais plus loin
+            const targetCameraPosition = targetPositionWorld.clone().normalize().multiplyScalar(distance);
+            console.log(`Caméra cible:`, targetCameraPosition);
+
+            // Animation fluide vers la position
+            const duration = 1000; // 1 seconde
+            const startTime = Date.now();
+
+            function animateRotation() {
+                const elapsed = Date.now() - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+
+                // Easing function (ease-in-out)
+                const easeProgress = progress < 0.5
+                    ? 2 * progress * progress
+                    : -1 + (4 - 2 * progress) * progress;
+
+                // Interpolation linéaire directe
+                camera.position.x = startPosition.x + (targetCameraPosition.x - startPosition.x) * easeProgress;
+                camera.position.y = startPosition.y + (targetCameraPosition.y - startPosition.y) * easeProgress;
+                camera.position.z = startPosition.z + (targetCameraPosition.z - startPosition.z) * easeProgress;
+
+                // Normaliser pour garder la distance constante
+                camera.position.normalize().multiplyScalar(distance);
+
+                // Faire regarder la caméra vers le centre
+                camera.lookAt(centerPosition);
+
+                // Mettre à jour les contrôles
+                controls.target.copy(centerPosition);
+                controls.update();
+
+                if (progress < 1) {
+                    requestAnimationFrame(animateRotation);
+                } else {
+                    // Réactiver la rotation automatique après l'animation
+                    isAnimatingRotation = false;
+                    console.log('Animation terminée, caméra à:', camera.position);
+                }
+            }
+
+            animateRotation();
+        }
+
         // Gestion du redimensionnement
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
+
+            if (leafletMap) {
+                leafletMap.invalidateSize();
+            }
         });
 
         // Ajout de l'événement de clic
@@ -462,6 +647,7 @@
 
         // Initialisation
         initScene();
+        initLeafletMap();
         createEarth();
         getUserLocation();
         fetchCountries();
