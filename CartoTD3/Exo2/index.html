@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Exercice 2 - AR Géolocalisée</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
+            background: #000;
+        }
+
+        #video-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 1;
+        }
+
+        #camera-feed {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        #canvas-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 2;
+            pointer-events: none;
+        }
+
+        #info-panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            font-size: 14px;
+            max-width: 350px;
+            z-index: 100;
+        }
+
+        #info-panel h1 {
+            font-size: 18px;
+            margin-bottom: 15px;
+            color: #4CAF50;
+        }
+
+        #info-panel p {
+            margin: 8px 0;
+            line-height: 1.5;
+        }
+
+        .data-label {
+            font-weight: 600;
+            color: #4CAF50;
+        }
+
+        .back-button {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: linear-gradient(45deg, #6c757d, #495057);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 25px;
+            text-decoration: none;
+            font-weight: 600;
+            z-index: 100;
+            transition: all 0.3s ease;
+        }
+
+        .back-button:hover {
+            background: linear-gradient(45deg, #495057, #343a40);
+            transform: translateY(-2px);
+        }
+
+        #compass {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            width: 120px;
+            height: 120px;
+            background: rgba(0, 0, 0, 0.8);
+            border-radius: 50%;
+            border: 3px solid #4CAF50;
+            z-index: 100;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #compass-needle {
+            width: 4px;
+            height: 50px;
+            background: linear-gradient(to top, #ff0000, #ffffff);
+            position: absolute;
+            transform-origin: center bottom;
+            transition: transform 0.3s ease;
+        }
+
+        #compass-text {
+            position: absolute;
+            top: 10px;
+            color: white;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        #error-message {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255, 0, 0, 0.9);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            z-index: 200;
+            display: none;
+        }
+
+        #set-marker-btn {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: linear-gradient(45deg, #4CAF50, #45a049);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 30px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            z-index: 100;
+            box-shadow: 0 4px 15px rgba(76, 175, 80, 0.4);
+            transition: all 0.3s ease;
+        }
+
+        #set-marker-btn:hover {
+            background: linear-gradient(45deg, #45a049, #3d8b40);
+            transform: translateX(-50%) translateY(-2px);
+            box-shadow: 0 6px 20px rgba(76, 175, 80, 0.5);
+        }
+
+        #set-marker-btn:active {
+            transform: translateX(-50%) translateY(0);
+        }
+    </style>
+</head>
+<body>
+    <a href="../index.html" class="back-button">← Retour</a>
+
+    <div id="error-message"></div>
+
+    <!-- Flux vidéo de la caméra -->
+    <div id="video-container">
+        <video id="camera-feed" autoplay playsinline></video>
+    </div>
+
+    <!-- Canvas Three.js pour la réalité augmentée -->
+    <div id="canvas-container"></div>
+
+    <!-- Panneau d'informations -->
+    <div id="info-panel">
+        <h1>AR Géolocalisée</h1>
+        <p><span class="data-label">Latitude:</span> <span id="lat">--</span></p>
+        <p><span class="data-label">Longitude:</span> <span id="lon">--</span></p>
+        <p><span class="data-label">Altitude:</span> <span id="alt">--</span> m</p>
+        <p><span class="data-label">Précision:</span> <span id="accuracy">--</span> m</p>
+        <p><span class="data-label">Orientation:</span> <span id="heading">--</span>°</p>
+        <p><span class="data-label">Inclinaison:</span> <span id="tilt">--</span>°</p>
+        <p><span class="data-label">Objets visibles:</span> <span id="objects-count">0</span></p>
+    </div>
+
+    <!-- Compas -->
+    <div id="compass">
+        <div id="compass-text">N</div>
+        <div id="compass-needle"></div>
+    </div>
+
+    <!-- Bouton pour fixer le marqueur -->
+    <button id="set-marker-btn">📍 Placer le cube ici</button>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.module.js"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+
+        // Variables globales
+        let scene, camera, renderer;
+        let userPosition = { lat: 0, lon: 0, alt: 0 };
+        let initialPosition = null; // Position initiale de l'utilisateur
+        let deviceOrientation = { alpha: 0, beta: 0, gamma: 0 };
+        let geoObjects = [];
+        let fixedCube;
+        let fixedCubeGeoPosition = null; // Position géographique du cube
+
+        // Lieux d'intérêt géolocalisés (exemples)
+        const pointsOfInterest = [
+            { name: "Tour Eiffel", lat: 48.8584, lon: 2.2945, color: 0xff0000 },
+            { name: "Arc de Triomphe", lat: 48.8738, lon: 2.2950, color: 0x00ff00 },
+            { name: "Sacré-Cœur", lat: 48.8867, lon: 2.3431, color: 0x0000ff },
+            { name: "Notre-Dame", lat: 48.8530, lon: 2.3499, color: 0xffff00 },
+            { name: "Louvre", lat: 48.8606, lon: 2.3376, color: 0xff00ff }
+        ];
+
+        // Initialiser la caméra vidéo
+        async function initCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: 'environment',
+                        width: { ideal: 1920 },
+                        height: { ideal: 1080 }
+                    }
+                });
+
+                const video = document.getElementById('camera-feed');
+                video.srcObject = stream;
+
+                console.log('Caméra initialisée avec succès');
+            } catch (error) {
+                console.error('Erreur d\'accès à la caméra:', error);
+                showError('Impossible d\'accéder à la caméra. Vérifiez les permissions.');
+            }
+        }
+
+        // Initialiser la scène Three.js
+        function initScene() {
+            scene = new THREE.Scene();
+
+            camera = new THREE.PerspectiveCamera(
+                75,
+                window.innerWidth / window.innerHeight,
+                0.1,
+                10000
+            );
+            camera.position.set(0, 0, 0);
+
+            renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setClearColor(0x000000, 0);
+            document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+            // Lumière ambiante
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+            scene.add(ambientLight);
+
+            // Créer un cube fixe dans la scène
+            createFixedCube();
+
+            console.log('Scène Three.js initialisée');
+        }
+
+        // Créer un cube fixe géolocalisé
+        function createFixedCube() {
+            // Géométrie du cube
+            const geometry = new THREE.BoxGeometry(1, 1, 1);
+
+            // Matériau avec des faces colorées différemment
+            const materials = [
+                new THREE.MeshBasicMaterial({ color: 0xff0000 }), // Droite - Rouge
+                new THREE.MeshBasicMaterial({ color: 0x00ff00 }), // Gauche - Vert
+                new THREE.MeshBasicMaterial({ color: 0x0000ff }), // Haut - Bleu
+                new THREE.MeshBasicMaterial({ color: 0xffff00 }), // Bas - Jaune
+                new THREE.MeshBasicMaterial({ color: 0xff00ff }), // Avant - Magenta
+                new THREE.MeshBasicMaterial({ color: 0x00ffff })  // Arrière - Cyan
+            ];
+
+            fixedCube = new THREE.Mesh(geometry, materials);
+            // Ne pas afficher le cube avant qu'il soit placé
+            fixedCube.visible = false;
+
+            scene.add(fixedCube);
+
+            console.log('Cube fixe créé (invisible tant que non placé)');
+        }
+
+        // Mettre à jour la position du cube fixe en fonction de la géolocalisation
+        function updateFixedCubePosition() {
+            if (!fixedCube || !fixedCubeGeoPosition || followMode) return; // Ne pas exécuter en mode suivi
+
+            // Rendre le cube visible
+            fixedCube.visible = true;
+
+            // Calculer la distance et le bearing par rapport à la position du cube
+            const distance = calculateDistance(
+                userPosition.lat, userPosition.lon,
+                fixedCubeGeoPosition.lat, fixedCubeGeoPosition.lon
+            );
+
+            const bearing = calculateBearing(
+                userPosition.lat, userPosition.lon,
+                fixedCubeGeoPosition.lat, fixedCubeGeoPosition.lon
+            );
+
+            // Convertir en coordonnées 3D locales
+            // On soustrait l'orientation du device pour que le cube reste fixe dans l'espace réel
+            const angle = (bearing - deviceOrientation.alpha) * Math.PI / 180;
+
+            // Si la distance est très petite (< 0.5m), placer le cube juste devant à distance fixe
+            const displayDistance = distance < 0.5 ? 1 : distance;
+
+            // Positionner le cube
+            fixedCube.position.x = Math.sin(angle) * displayDistance;
+            fixedCube.position.y = 1.5; // Hauteur à peu près au niveau de la tête
+            fixedCube.position.z = -Math.cos(angle) * displayDistance;
+
+            console.log(`Cube à ${distance.toFixed(2)}m, bearing: ${bearing.toFixed(0)}°, position 3D:`, fixedCube.position);
+        }
+
+        // Calculer la distance entre deux points géographiques (formule de Haversine)
+        function calculateDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371e3; // Rayon de la Terre en mètres
+            const φ1 = lat1 * Math.PI / 180;
+            const φ2 = lat2 * Math.PI / 180;
+            const Δφ = (lat2 - lat1) * Math.PI / 180;
+            const Δλ = (lon2 - lon1) * Math.PI / 180;
+
+            const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+                      Math.cos(φ1) * Math.cos(φ2) *
+                      Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+            return R * c; // Distance en mètres
+        }
+
+        // Calculer le bearing (direction) entre deux points
+        function calculateBearing(lat1, lon1, lat2, lon2) {
+            const φ1 = lat1 * Math.PI / 180;
+            const φ2 = lat2 * Math.PI / 180;
+            const Δλ = (lon2 - lon1) * Math.PI / 180;
+
+            const y = Math.sin(Δλ) * Math.cos(φ2);
+            const x = Math.cos(φ1) * Math.sin(φ2) -
+                      Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+
+            const θ = Math.atan2(y, x);
+            return (θ * 180 / Math.PI + 360) % 360; // Bearing en degrés
+        }
+
+        // Créer un objet 3D géolocalisé
+        function createGeoObject(poi) {
+            const distance = calculateDistance(
+                userPosition.lat, userPosition.lon,
+                poi.lat, poi.lon
+            );
+
+            const bearing = calculateBearing(
+                userPosition.lat, userPosition.lon,
+                poi.lat, poi.lon
+            );
+
+            // Créer une sphère colorée
+            const geometry = new THREE.SphereGeometry(5, 32, 32);
+            const material = new THREE.MeshBasicMaterial({ color: poi.color });
+            const sphere = new THREE.Mesh(geometry, material);
+
+            // Positionner l'objet en fonction de la distance et du bearing
+            const scale = Math.min(distance / 100, 50); // Échelle pour la distance
+            const angle = (bearing - deviceOrientation.alpha) * Math.PI / 180;
+
+            sphere.position.x = Math.sin(angle) * scale;
+            sphere.position.y = 0;
+            sphere.position.z = -Math.cos(angle) * scale;
+
+            // Ajouter un label
+            sphere.userData = {
+                name: poi.name,
+                distance: distance,
+                bearing: bearing
+            };
+
+            scene.add(sphere);
+            geoObjects.push(sphere);
+
+            console.log(`Objet créé: ${poi.name} à ${distance.toFixed(0)}m, bearing: ${bearing.toFixed(0)}°`);
+        }
+
+        // Mettre à jour les objets géolocalisés
+        function updateGeoObjects() {
+            // Supprimer les anciens objets
+            geoObjects.forEach(obj => scene.remove(obj));
+            geoObjects = [];
+
+            // Recréer les objets avec les nouvelles positions
+            pointsOfInterest.forEach(poi => {
+                const distance = calculateDistance(
+                    userPosition.lat, userPosition.lon,
+                    poi.lat, poi.lon
+                );
+
+                // Afficher seulement les objets dans un rayon de 5km
+                if (distance < 5000) {
+                    createGeoObject(poi);
+                }
+            });
+
+            document.getElementById('objects-count').textContent = geoObjects.length;
+        }
+
+        // Géolocalisation
+        function initGeolocation() {
+            if ('geolocation' in navigator) {
+                navigator.geolocation.watchPosition(
+                    (position) => {
+                        userPosition.lat = position.coords.latitude;
+                        userPosition.lon = position.coords.longitude;
+                        userPosition.alt = position.coords.altitude || 0;
+
+                        document.getElementById('lat').textContent = userPosition.lat.toFixed(6);
+                        document.getElementById('lon').textContent = userPosition.lon.toFixed(6);
+                        document.getElementById('alt').textContent = userPosition.alt.toFixed(0);
+                        document.getElementById('accuracy').textContent = position.coords.accuracy.toFixed(0);
+
+                        updateGeoObjects();
+                        updateFixedCubePosition();
+                    },
+                    (error) => {
+                        console.error('Erreur de géolocalisation:', error);
+                        showError('Géolocalisation impossible. Vérifiez les permissions.');
+                    },
+                    {
+                        enableHighAccuracy: true,
+                        maximumAge: 0,
+                        timeout: 5000
+                    }
+                );
+            } else {
+                showError('Géolocalisation non supportée par ce navigateur.');
+            }
+        }
+
+        // Orientation du device
+        function initOrientation() {
+            if (window.DeviceOrientationEvent) {
+                window.addEventListener('deviceorientation', (event) => {
+                    deviceOrientation.alpha = event.alpha || 0; // Compas (0-360)
+                    deviceOrientation.beta = event.beta || 0;   // Inclinaison avant/arrière
+                    deviceOrientation.gamma = event.gamma || 0; // Inclinaison gauche/droite
+
+                    document.getElementById('heading').textContent = deviceOrientation.alpha.toFixed(0);
+                    document.getElementById('tilt').textContent = deviceOrientation.beta.toFixed(0);
+
+                    // Mettre à jour le compas
+                    const needle = document.getElementById('compass-needle');
+                    needle.style.transform = `rotate(${-deviceOrientation.alpha}deg)`;
+
+                    // Orienter la caméra Three.js
+                    camera.rotation.y = deviceOrientation.alpha * Math.PI / 180;
+                    camera.rotation.x = deviceOrientation.beta * Math.PI / 180;
+                    camera.rotation.z = deviceOrientation.gamma * Math.PI / 180;
+
+                    // Mettre à jour la position du cube
+                    updateFixedCubePosition();
+                });
+            } else {
+                console.warn('DeviceOrientation non supporté');
+            }
+        }
+
+        // Animation
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // Mettre à jour le cube en mode suivi
+            updateFollowingCube();
+
+            // Faire tourner le cube pour mieux le visualiser
+            if (fixedCube && fixedCube.visible) {
+                fixedCube.rotation.x += 0.01;
+                fixedCube.rotation.y += 0.01;
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        // Activer/désactiver le mode suivi
+        let followMode = false;
+
+        // Placer le cube en mode suivi
+        function setCubeAtCurrentPosition() {
+            if (!userPosition.lat || !userPosition.lon) {
+                alert('Position GPS non disponible. Attendez que la géolocalisation soit active.');
+                return;
+            }
+
+            // Activer le mode suivi
+            followMode = !followMode;
+
+            const btn = document.getElementById('set-marker-btn');
+
+            if (followMode) {
+                // Mode suivi activé
+                fixedCubeGeoPosition = { ...userPosition };
+
+                btn.textContent = '✅ Mode suivi actif';
+                btn.style.background = 'linear-gradient(45deg, #ff5252, #f44336)';
+
+                console.log('Mode suivi activé - le cube suit votre position');
+            } else {
+                // Mode suivi désactivé
+                fixedCubeGeoPosition = null;
+                if (fixedCube) fixedCube.visible = false;
+
+                btn.textContent = '📍 Placer le cube ici';
+                btn.style.background = 'linear-gradient(45deg, #4CAF50, #45a049)';
+
+                console.log('Mode suivi désactivé');
+            }
+        }
+
+        // Mettre à jour le cube en mode suivi
+        function updateFollowingCube() {
+            if (!followMode || !fixedCube) return;
+
+            // Le cube suit votre position GPS
+            fixedCubeGeoPosition = { ...userPosition };
+
+            // Positionner le cube à 0.5m devant vous, au centre de votre champ de vision
+            const distance = 0.5; // 50cm devant
+
+            // Calculer la direction de la caméra
+            const cameraDirection = new THREE.Vector3(0, 0, -1);
+            cameraDirection.applyQuaternion(camera.quaternion);
+
+            // Position du cube : devant la caméra
+            const cubePosition = camera.position.clone().add(cameraDirection.multiplyScalar(distance));
+
+            fixedCube.visible = true;
+            fixedCube.position.copy(cubePosition);
+
+            // Le cube ne suit pas les changements de hauteur de la caméra
+            // Il reste à hauteur fixe (niveau du visage)
+            fixedCube.position.y = 0; // Hauteur relative à la caméra qui est à 0
+
+            console.log('Cube en mode suivi - Position 3D:', fixedCube.position);
+        }
+
+        // Afficher un message d'erreur
+        function showError(message) {
+            const errorDiv = document.getElementById('error-message');
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
+        }
+
+        // Gestion du redimensionnement
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // Initialisation
+        async function init() {
+            await initCamera();
+            initScene();
+            initGeolocation();
+            initOrientation();
+            animate();
+
+            // Ajouter l'événement au bouton de placement du cube
+            document.getElementById('set-marker-btn').addEventListener('click', setCubeAtCurrentPosition);
+        }
+
+        init();
+    </script>
+</body>
+</html>
