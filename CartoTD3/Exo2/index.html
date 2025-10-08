@@ -279,8 +279,8 @@
 
         // Créer un cube fixe géolocalisé
         function createFixedCube() {
-            // Géométrie du cube
-            const geometry = new THREE.BoxGeometry(1, 1, 1);
+            // Géométrie du cube (plus petit)
+            const geometry = new THREE.BoxGeometry(0.3, 0.3, 0.3);
 
             // Matériau avec des faces colorées différemment
             const materials = [
@@ -303,7 +303,7 @@
 
         // Mettre à jour la position du cube fixe en fonction de la géolocalisation
         function updateFixedCubePosition() {
-            if (!fixedCube || !fixedCubeGeoPosition || followMode) return; // Ne pas exécuter en mode suivi
+            if (!fixedCube || !fixedCubeGeoPosition) return;
 
             // Rendre le cube visible
             fixedCube.visible = true;
@@ -488,9 +488,6 @@
         function animate() {
             requestAnimationFrame(animate);
 
-            // Mettre à jour le cube en mode suivi
-            updateFollowingCube();
-
             // Faire tourner le cube pour mieux le visualiser
             if (fixedCube && fixedCube.visible) {
                 fixedCube.rotation.x += 0.01;
@@ -500,53 +497,44 @@
             renderer.render(scene, camera);
         }
 
-        // Activer/désactiver le mode suivi
-        let followMode = false;
-
-        // Placer le cube en mode suivi
+        // Placer le cube à une position GPS fixe proche
         function setCubeAtCurrentPosition() {
             if (!userPosition.lat || !userPosition.lon) {
                 alert('Position GPS non disponible. Attendez que la géolocalisation soit active.');
                 return;
             }
 
-            // Activer le mode suivi
-            followMode = !followMode;
-
             const btn = document.getElementById('set-marker-btn');
 
-            if (followMode) {
-                // Mode suivi activé
-                fixedCubeGeoPosition = { ...userPosition };
+            if (!fixedCubeGeoPosition) {
+                // Placer le cube à 3 mètres au nord de votre position actuelle
+                const distance = 3; // 3 mètres
+                const deltaLat = distance / 111000; // Conversion mètres -> degrés lat
 
-                btn.textContent = '✅ Mode suivi actif';
+                fixedCubeGeoPosition = {
+                    lat: userPosition.lat + deltaLat,
+                    lon: userPosition.lon,
+                    alt: userPosition.alt
+                };
+
+                btn.textContent = '✅ Cube placé à 3m';
                 btn.style.background = 'linear-gradient(45deg, #ff5252, #f44336)';
 
-                console.log('Mode suivi activé - le cube suit votre position');
+                console.log('Cube placé à 3m au nord:', fixedCubeGeoPosition);
+                console.log('Votre position:', userPosition);
+
+                // Mettre à jour immédiatement
+                updateFixedCubePosition();
             } else {
-                // Mode suivi désactivé
+                // Réinitialiser
                 fixedCubeGeoPosition = null;
                 if (fixedCube) fixedCube.visible = false;
 
                 btn.textContent = '📍 Placer le cube ici';
                 btn.style.background = 'linear-gradient(45deg, #4CAF50, #45a049)';
 
-                console.log('Mode suivi désactivé');
+                console.log('Cube retiré');
             }
-        }
-
-        // Mettre à jour le cube en mode suivi
-        function updateFollowingCube() {
-            if (!followMode || !fixedCube) return;
-
-            // Le cube suit votre position GPS
-            fixedCubeGeoPosition = { ...userPosition };
-
-            // Simplement positionner le cube devant la caméra
-            fixedCube.visible = true;
-            fixedCube.position.set(0, 0, -1); // 1 mètre devant la caméra (Z négatif)
-
-            console.log('Cube visible en mode suivi - Position:', fixedCube.position);
         }
 
         // Afficher un message d'erreur
