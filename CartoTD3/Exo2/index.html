@@ -542,24 +542,11 @@
             // Le cube suit votre position GPS
             fixedCubeGeoPosition = { ...userPosition };
 
-            // Positionner le cube à 0.5m devant vous, au centre de votre champ de vision
-            const distance = 0.5; // 50cm devant
-
-            // Calculer la direction de la caméra
-            const cameraDirection = new THREE.Vector3(0, 0, -1);
-            cameraDirection.applyQuaternion(camera.quaternion);
-
-            // Position du cube : devant la caméra
-            const cubePosition = camera.position.clone().add(cameraDirection.multiplyScalar(distance));
-
+            // Simplement positionner le cube devant la caméra
             fixedCube.visible = true;
-            fixedCube.position.copy(cubePosition);
+            fixedCube.position.set(0, 0, -1); // 1 mètre devant la caméra (Z négatif)
 
-            // Le cube ne suit pas les changements de hauteur de la caméra
-            // Il reste à hauteur fixe (niveau du visage)
-            fixedCube.position.y = 0; // Hauteur relative à la caméra qui est à 0
-
-            console.log('Cube en mode suivi - Position 3D:', fixedCube.position);
+            console.log('Cube visible en mode suivi - Position:', fixedCube.position);
         }
 
         // Afficher un message d'erreur
